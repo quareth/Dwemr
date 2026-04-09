@@ -61,6 +61,8 @@ The result is not flawless, but it does the job I actually wanted: it discovers 
 
 It still has rough edges. User authentication exists, but user creation is manual. The sample URL copy suggests `https://example.com/sitemap.xml`, while the app is really designed to discover sitemaps from the base site URL instead of accepting a sitemap URL directly. Still, the main goal was achieved: a usable, reasonably clean, well-structured app that solves the requested problem and leaves room for future improvement.
 
+https://github.com/quareth/Test10
+
 ## Local Development
 
 ```bash
