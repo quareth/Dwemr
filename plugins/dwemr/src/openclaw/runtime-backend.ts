@@ -369,8 +369,16 @@ function resolveOwnerSessionKey(context: DwemrRuntimeContext | undefined, fallba
 }
 
 function collectAcpRuntimeOutput(events: Array<{ type: string; text?: string; stream?: string }>) {
+  let lastToolCallIndex = -1;
+  for (let i = events.length - 1; i >= 0; i--) {
+    if (events[i].type === "tool_call") {
+      lastToolCallIndex = i;
+      break;
+    }
+  }
   let output = "";
-  for (const event of events) {
+  for (let i = lastToolCallIndex + 1; i < events.length; i++) {
+    const event = events[i];
     if (event.type === "text_delta" && event.stream !== "thought" && event.text) {
       output += event.text;
     }
@@ -602,6 +610,7 @@ function createAcpNativeRuntimeBackend(context?: DwemrRuntimeContext): DwemrRunt
           patch: {
             model: request.runtimeConfig?.model?.trim() || undefined,
             cwd: request.targetPath,
+            permissionProfile: "approve-all",
             timeoutSeconds,
           },
         });
@@ -732,6 +741,7 @@ function createAcpNativeRuntimeBackend(context?: DwemrRuntimeContext): DwemrRunt
           patch: {
             model: request.runtimeConfig?.model?.trim() || undefined,
             cwd: request.targetPath,
+            permissionProfile: "approve-all",
             timeoutSeconds: 60,
           },
         });

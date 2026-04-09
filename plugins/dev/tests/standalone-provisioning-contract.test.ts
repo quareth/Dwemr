@@ -20,12 +20,11 @@ test("shared CLAUDE guide documents provisioning_pending as a standalone stop co
   assert.match(text, /\/dwemr start <request>/);
 });
 
-test("bootstrap Claude settings enable unattended headless DWEMR execution", () => {
-  const text = readRelative("templates/.claude/settings.json");
+test("bootstrap pack does not ship local Claude settings (permissions are set via ACP session API)", () => {
+  const bootstrap = getPackDefinition("bootstrap");
+  const targets = bootstrap.entries.map((entry) => entry.targetPath);
 
-  assert.match(text, /claude-code-settings\.json/);
-  assert.match(text, /"defaultMode": "bypassPermissions"/);
-  assert.match(text, /"allow": \["Bash", "Edit", "Write"\]/);
+  assert.ok(!targets.includes(".claude/settings.json"));
 });
 
 test("bootstrap pack ships delivery-driver and no longer treats delivery-onboard as a bootstrap command", () => {
