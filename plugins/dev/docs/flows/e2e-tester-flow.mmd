@@ -1,0 +1,17 @@
+flowchart TD
+  start["implementation-manager dispatch<br/>after reviewer COMPLETE<br/>standard_app only"] --> scope["Read phase context,<br/>changed files,<br/>implementation-state,<br/>acceptance criteria"]
+  scope --> classify["Determine test scope<br/>playwright / api / both / none_applicable"]
+  classify --> infra["Inspect existing test infrastructure<br/>and project conventions"]
+  infra --> create["Create phase-scoped e2e tests<br/>when applicable"]
+  create --> run["Run tests with timeout guard"]
+  run --> result{"Result"}
+
+  result -- passed --> pass["passed"]
+  result -- failed --> fail["failed<br/>route back for fixes"]
+  result -- env_blocker --> skip["skipped_env_blocker<br/>fail-open"]
+
+  pass --> checkpoint["Write e2e-state,<br/>implementation-state,<br/>and execution-state"]
+  fail --> checkpoint
+  skip --> checkpoint
+
+  checkpoint --> handoff["Return result to implementation-manager"]

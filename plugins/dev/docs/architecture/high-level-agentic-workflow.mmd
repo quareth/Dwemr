@@ -1,0 +1,89 @@
+flowchart TD
+  user[User]
+
+  subgraph openclaw["OpenClaw Public Layer"]
+    cmd["/dwemr commands"]
+    plugin["DWEMR plugin runtime"]
+    doctor["Local operator actions<br/>help / doctor / init / mode / stop / use"]
+    routed["Routed actions<br/>start / plan / continue / status / what-now / implement / release / pr"]
+    runtime["Managed ACPX runtime"]
+  end
+
+  subgraph project["Target Project"]
+    bootstrap["Bootstrap assets<br/>CLAUDE.md / .claude / .dwemr"]
+
+    subgraph canonical["Canonical State"]
+      onboarding["onboarding-state.md"]
+      pipeline["pipeline-state.md"]
+      execution["execution-state.md"]
+      implementation["implementation-state.md"]
+      wave["wave-state.md<br/>when active"]
+      release["release-state.md<br/>trace only"]
+    end
+
+    subgraph memory["Narrative Context"]
+      prompt["memory/global/prompt.md"]
+      decision["memory/global/decision-log.md"]
+      userprofile["memory/global/user-profile.md"]
+    end
+
+    subgraph claude["Claude Internal Workflow Layer"]
+      deliverycmd["/delivery-* commands"]
+      main["Main Claude session"]
+      interviewer["interviewer / prompt-enhancer"]
+      deliverymgr["delivery-manager"]
+      planningmgr["planning-manager / wave-manager"]
+      implmgr["implementation-manager"]
+      releasemgr["release-manager"]
+      workers["Workers<br/>feature-implementer / reviewer / fixer / e2e / planning specialists"]
+    end
+  end
+
+  user --> cmd
+  cmd --> plugin
+  plugin --> doctor
+  plugin --> routed
+  plugin --> runtime
+  plugin --> bootstrap
+
+  routed --> runtime
+  runtime --> deliverycmd
+  deliverycmd --> main
+
+  main --> onboarding
+  main --> pipeline
+  main --> execution
+  main --> implementation
+  main --> wave
+  main -. optional context .-> release
+  main -. optional context .-> prompt
+  main -. optional context .-> decision
+  main -. optional context .-> userprofile
+
+  main --> interviewer
+  main --> deliverymgr
+
+  interviewer --> onboarding
+
+  deliverymgr --> pipeline
+  deliverymgr --> execution
+  deliverymgr --> planningmgr
+  deliverymgr --> implmgr
+  deliverymgr --> releasemgr
+
+  planningmgr --> wave
+  planningmgr --> workers
+  implmgr --> implementation
+  implmgr --> workers
+  releasemgr --> pipeline
+  releasemgr --> execution
+  releasemgr --> release
+
+  workers --> execution
+  workers --> implementation
+
+  pipeline -. routing truth .-> deliverymgr
+  execution -. freshest checkpoint .-> main
+  implementation -. task packet .-> implmgr
+  wave -. wave-local planning .-> planningmgr
+  release -. traceability only .-> releasemgr

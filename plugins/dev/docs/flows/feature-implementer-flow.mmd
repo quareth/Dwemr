@@ -1,0 +1,12 @@
+flowchart TD
+  start["implementation-manager dispatch"] --> read["Read implementation-state.md<br/>and active guide task"]
+  read --> resolve["Resolve current guide / phase / task"]
+  resolve --> startcp["Write start checkpoints<br/>implementation-state + execution-state"]
+  startcp --> implement["Implement current task only"]
+  implement --> verify["Run relevant verification<br/>(tests / lint / type checks)"]
+  verify --> finishcp["Write completion checkpoints<br/>changed_files + verification summary"]
+  finishcp --> handoff["Return thin completion handoff<br/>to implementation-manager"]
+  handoff --> stop["Stop"]
+
+  resolve -. if missing task context .-> orchestrator["orchestrator via manager/main agent"]
+  orchestrator -. clarified context .-> startcp

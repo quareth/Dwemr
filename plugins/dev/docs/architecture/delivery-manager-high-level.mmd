@@ -1,0 +1,70 @@
+flowchart TD
+  entry["Main Claude session<br/>via /delivery-start / continue / implement / release / pr"]
+
+  subgraph state["Canonical Inputs"]
+    onboarding["onboarding-state.md"]
+    pipeline["pipeline-state.md"]
+    execution["execution-state.md"]
+    implementation["implementation-state.md"]
+    wave["active wave-state.md<br/>when present"]
+    release["release-state.md<br/>optional trace only"]
+  end
+
+  subgraph delivery["delivery-manager"]
+    read["Read canonical state first"]
+    reconcile["Reconcile manager truth<br/>with freshest execution checkpoint"]
+    decide["Decide active lane and next owner"]
+    pipelinewrite["Update pipeline-state.md<br/>for manager-owned routing truth"]
+    checkpoint["Refresh execution-state.md<br/>before stop or handoff"]
+  end
+
+  subgraph lanes["Stage Owners"]
+    planning["planning-manager / wave-manager"]
+    implementationmgr["implementation-manager"]
+    releasemgr["release-manager"]
+    stop["terminal stop / milestone stop / blocked wait"]
+  end
+
+  subgraph workers["Downstream Execution"]
+    planningworkers["planning specialists"]
+    implworkers["implementer / reviewer / fixer / e2e"]
+    gitops["commit / push / PR / merge work"]
+  end
+
+  entry --> read
+  onboarding --> read
+  pipeline --> read
+  execution --> reconcile
+  implementation --> reconcile
+  wave --> reconcile
+  release -. optional context .-> reconcile
+
+  read --> reconcile
+  reconcile --> decide
+  decide --> pipelinewrite
+  decide --> checkpoint
+
+  pipelinewrite --> planning
+  pipelinewrite --> implementationmgr
+  pipelinewrite --> releasemgr
+  pipelinewrite --> stop
+
+  checkpoint --> planning
+  checkpoint --> implementationmgr
+  checkpoint --> releasemgr
+  checkpoint --> stop
+
+  planning --> planningworkers
+  implementationmgr --> implworkers
+  releasemgr --> gitops
+
+  planningworkers --> execution
+  implworkers --> execution
+  implworkers --> implementation
+  gitops --> execution
+  gitops --> release
+
+  execution -. freshest worker or manager checkpoint .-> reconcile
+  implementation -. task packet and worker evidence .-> reconcile
+  wave -. wave-local planning context .-> reconcile
+  pipeline -. authoritative routing ledger .-> decide

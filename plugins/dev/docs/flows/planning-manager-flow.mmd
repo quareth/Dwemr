@@ -1,0 +1,25 @@
+flowchart TD
+  start["delivery-manager or planning-only entry"] --> read["Read onboarding-state, project-config,<br/>pipeline-state, implementation-state,<br/>and prompt.md when present"]
+  read --> onboarding{"Onboarding complete?"}
+  onboarding -- no --> blocked["Blocked<br/>return stop and let onboarding run first"]
+  onboarding -- yes --> select["Choose planning path allowed by onboarding-state"]
+
+  select --> profile{"Selected profile"}
+  profile -- minimal_tool --> guideonly["Route only to implementation-guide-creator"]
+  profile -- standard_app --> apppath["Default to implementation-guide-creator<br/>optionally architect or interviewer"]
+
+  apppath --> architectgate{"standard-app-focused-planning<br/>installed and justified?"}
+  architectgate -- yes --> architect["architect"]
+  architectgate -- no --> needclarify{"Definition clarification needed?"}
+  needclarify -- yes --> interviewer["interviewer"]
+  needclarify -- no --> guidecreator["implementation-guide-creator"]
+
+  guideonly --> guidecreator
+  architect --> returnpm["Return to planning-manager"]
+  interviewer --> returnpm
+  guidecreator --> returnpm
+
+  returnpm --> checkartifacts{"Required planning artifacts exist<br/>and guide has clear first phase/task?"}
+  checkartifacts -- no --> checkpoint["Write execution-state checkpoint<br/>and next specialist handoff"]
+  checkpoint --> select
+  checkartifacts -- yes --> complete["Planning complete<br/>return handoff to delivery-manager"]

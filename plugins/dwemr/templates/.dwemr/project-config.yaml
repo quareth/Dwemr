@@ -1,0 +1,44 @@
+# Shared project configuration for all top-level agents and skills.
+# Treat this file as the source of truth for project-level capability decisions.
+#
+# Important pattern:
+# - Bootstrap installs may leave some values as `unset`; onboarding must rewrite
+#   those to concrete values before normal delivery continues.
+# - When a capability is marked unavailable/disabled, agents should recover by
+#   downgrading the workflow rather than blocking when possible.
+
+project:
+  # unset | minimal_tool | standard_app
+  size: unset
+
+delivery:
+  # unset | autonomous | checkpointed
+  execution_mode: unset
+
+  # auto | plan_approval_required
+  approval_mode: auto
+
+scm:
+  # unset | auto | required | disabled
+  git_mode: unset
+
+  # unset | available | not_available
+  github: unset
+
+  # unset | enabled | disabled
+  remote_push: unset
+
+  # unset | enabled | disabled
+  pull_requests: unset
+
+  # always disabled — DWEMR does not manage CI pipelines
+  ci: disabled
+
+  # unset | manual | auto | disabled
+  merge: unset
+
+runtime:
+  # state_first | prompt_first
+  resume_preference: state_first
+
+  recover_missing_state: true

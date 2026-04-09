@@ -1,0 +1,98 @@
+{
+  "id": "dwemr",
+  "name": "Delivery Workflow Engine & Memory Relay (DWEMR)",
+  "description": "DWEMR is an OpenClaw-to-Claude delivery bridge that initializes projects, routes `/dwemr` actions, and lets Claude Code own the internal workflow.",
+  "version": "0.1.0",
+  "skills": ["skills"],
+  "uiHints": {
+    "acpxPath": {
+      "label": "ACPX override path",
+      "help": "Advanced override for a custom acpx executable. Leave blank for the managed DWEMR runtime.",
+      "advanced": true,
+      "placeholder": "/absolute/path/to/acpx"
+    },
+    "managedRuntimeDir": {
+      "label": "Managed runtime directory",
+      "help": "Advanced override for where DWEMR stores its managed ACPX wrapper.",
+      "advanced": true,
+      "placeholder": "/absolute/path/to/openclaw-state/tools/dwemr/runtime"
+    },
+    "activeProjectPath": {
+      "label": "Active project path",
+      "help": "The currently selected DWEMR project. This is managed automatically by the plugin.",
+      "advanced": true,
+      "placeholder": "/absolute/path/to/project"
+    },
+    "defaultProjectPath": {
+      "label": "Default project path",
+      "help": "Optional default target project path used by DWEMR when the user does not provide one.",
+      "placeholder": "/absolute/path/to/project"
+    },
+    "model": {
+      "label": "Claude model",
+      "help": "Optional Claude model or alias for DWEMR runs, for example sonnet, opus, opusplan, or a full model name.",
+      "placeholder": "sonnet"
+    },
+    "subagentModel": {
+      "label": "Subagent model",
+      "help": "Optional Claude subagent model override. Use a full model name when possible.",
+      "advanced": true,
+      "placeholder": "claude-sonnet-4-6"
+    },
+    "effortLevel": {
+      "label": "Effort level",
+      "help": "Optional Claude effort override for DWEMR runs: low, medium, high, max, or auto.",
+      "advanced": true,
+      "placeholder": "medium"
+    }
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "acpxPath": {
+        "type": "string"
+      },
+      "managedRuntimeDir": {
+        "type": "string"
+      },
+      "activeProjectPath": {
+        "type": "string"
+      },
+      "defaultProjectPath": {
+        "type": "string"
+      },
+      "model": {
+        "type": "string"
+      },
+      "subagentModel": {
+        "type": "string"
+      },
+      "effortLevel": {
+        "type": "string"
+      },
+      "projects": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "addedAt": {
+              "type": "string"
+            },
+            "lastUsedAt": {
+              "type": "string"
+            },
+            "initialized": {
+              "type": "boolean"
+            }
+          },
+          "required": ["path", "addedAt", "lastUsedAt"]
+        }
+      }
+    }
+  }
+}

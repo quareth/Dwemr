@@ -1,0 +1,34 @@
+flowchart TD
+  start["delivery-manager dispatch"] --> read["Read project-config,<br/>pipeline-state,<br/>execution-state,<br/>and release-state trace"]
+  read --> mode{"Dispatch type"}
+
+  mode -- git validation --> tools["Verify git / gh availability<br/>and auth when required"]
+  tools --> repo["Initialize local repo if needed"]
+  repo --> remote["Configure remote if enabled"]
+  remote --> pushmain["Initial push when applicable"]
+  pushmain --> ready{"Validation succeeded?"}
+  ready -- no --> blocked["Return git_unavailable<br/>write git/release trace state"]
+  ready -- yes --> gitready["Return git_ready<br/>write pipeline/execution/release state"]
+
+  mode -- post-implementation release --> lane["Resume or establish active release lane"]
+  lane --> owner{"Another feature owns<br/>non-terminal release lane?"}
+  owner -- yes --> laneblock["Blocked<br/>return to delivery-manager"]
+  owner -- no --> branch["Create or checkout<br/>deterministic feature branch"]
+  branch --> commit["Stage and commit changes"]
+  commit --> push["Push when remote_push enabled"]
+  push --> pr{"pull_requests enabled?"}
+  pr -- no --> pushed["Stop at pushed or highest valid stage"]
+  pr -- yes --> prflow["Create or update PR"]
+  prflow --> merge{"merge mode"}
+  merge -- auto --> automerge["Merge when clean and allowed"]
+  merge -- manual --> manual["Stop at pr_open / ready_to_merge"]
+  merge -- disabled --> nomerge["Stop at highest valid stage"]
+
+  automerge --> terminal["merged"]
+  pushed --> checkpoint["Write pipeline,<br/>execution,<br/>and release-state"]
+  manual --> checkpoint
+  nomerge --> checkpoint
+  terminal --> checkpoint
+  laneblock --> checkpoint
+  blocked --> checkpoint
+  gitready --> checkpoint

@@ -1,0 +1,10 @@
+flowchart TD
+  start["implementation-manager dispatch<br/>with reviewer or e2e findings"] --> parse["Parse findings packet<br/>and cited locations"]
+  parse --> startcp["Write fixing start checkpoints<br/>implementation-state + execution-state"]
+  startcp --> fix["Apply minimal, surgical fixes<br/>for required findings only"]
+  fix --> verify["Run verification"]
+  verify --> finishcp["Write fixes_applied checkpoint<br/>changed_files + verification summary"]
+  finishcp --> handoff["Return updated context<br/>to implementation-manager"]
+  handoff --> rereview["Expected next worker:<br/>implementation-reviewer"]
+  parse -. if user-level decision needed .-> orchestrator["orchestrator via manager/main agent"]
+  orchestrator -. clarified context .-> startcp

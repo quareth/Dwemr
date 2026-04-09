@@ -1,0 +1,16 @@
+flowchart TD
+  start["implementation-manager dispatch<br/>at phase boundary"] --> inputs["Require phase plan,<br/>acceptance criteria,<br/>scope boundaries,<br/>and cumulative evidence"]
+  inputs --> enough{"Required input present?"}
+  enough -- no --> needctx["Return NEEDS_CLARIFICATION<br/>or blocked review handoff"]
+  enough -- yes --> reviewstart["Write review start checkpoints<br/>implementation-state + execution-state"]
+  reviewstart --> matrix["Map tasks and deliverables<br/>to code/test evidence"]
+  matrix --> acceptance["Validate phase acceptance criteria"]
+  acceptance --> quality["Check tests, lint/type,<br/>regression and scope compliance"]
+  quality --> verdict{"Verdict"}
+  verdict -- COMPLETE --> complete["Return COMPLETE report<br/>expected next stage task_accepted"]
+  verdict -- INCOMPLETE --> incomplete["Return findings report<br/>expected next worker implementation-fixer"]
+  verdict -- NEEDS_CLARIFICATION --> clarify["Call orchestrator via manager/main agent<br/>then re-run reviewer"]
+
+  complete --> finish["Write review_complete checkpoint"]
+  incomplete --> failcp["Write review_failed checkpoint"]
+  clarify --> failcp

@@ -1,0 +1,64 @@
+{
+  "name": "dwemr",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "DWEMR OpenClaw-to-Claude delivery bridge for project initialization, `/dwemr` routing, and Claude-native workflow execution.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/quareth/Dwemr.git",
+    "directory": "plugins/dwemr"
+  },
+  "homepage": "https://github.com/quareth/Dwemr/tree/main/plugins/dwemr",
+  "bugs": {
+    "url": "https://github.com/quareth/Dwemr/issues"
+  },
+  "keywords": [
+    "openclaw",
+    "plugin",
+    "claude",
+    "workflow",
+    "agent",
+    "delivery"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "files": [
+    "README.md",
+    "docs/PLAN_TEMPLATE.md",
+    "index.ts",
+    "install-packs.ts",
+    "openclaw.plugin.json",
+    "skills/",
+    "src/",
+    "templates/"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "test": "tsx --test ../dev/tests/**/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.3.24-beta.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "openclaw": "^2026.3.24-beta.2",
+    "tsx": "^4.21.0",
+    "typescript": "^5.7.0"
+  },
+  "openclaw": {
+    "extensions": ["./index.ts"],
+    "compat": {
+      "pluginApi": ">=2026.3.24-beta.2",
+      "minGatewayVersion": "2026.3.24-beta.2"
+    },
+    "build": {
+      "openclawVersion": "2026.3.24-beta.2",
+      "pluginSdkVersion": "2026.3.24-beta.2"
+    }
+  }
+}
