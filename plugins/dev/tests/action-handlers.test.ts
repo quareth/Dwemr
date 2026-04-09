@@ -21,6 +21,7 @@ import { initializeProject, provisionProjectProfile } from "../../dwemr/src/cont
 import { updateProjectExecutionMode } from "../../dwemr/src/control-plane/project-config";
 import { writeOnboardingState } from "../../dwemr/src/control-plane/onboarding-state";
 import { DWEMR_CONTRACT_VERSION } from "../../dwemr/src/control-plane/state-contract";
+import type { DwemrRuntimeBackend, DwemrRuntimeState } from "../../dwemr/src/openclaw/runtime-backend";
 import { makeFakeApiContext, type FakeApiContext } from "./fixtures/fake-api";
 
 async function makeTempProject() {
@@ -63,6 +64,47 @@ function getText(result: { content: [{ type: "text"; text: string }] }) {
   return result.content[0].text;
 }
 
+function createReadyAcpRuntimeState(): DwemrRuntimeState {
+  return {
+    backendKind: "acp-native",
+    ready: true,
+    acp: {
+      backendId: "acpx",
+      defaultAgent: "claude",
+      flowViewsAvailable: true,
+      taskFlowLegacyAvailable: true,
+    },
+    notes: [],
+  };
+}
+
+function createFakeDoctorRuntimeBackend(detail = "DWEMR_READY"): DwemrRuntimeBackend {
+  const runtime = createReadyAcpRuntimeState();
+  return {
+    kind: "acp-native",
+    async inspectRuntime() {
+      return runtime;
+    },
+    async ensureRuntime() {
+      return runtime;
+    },
+    async runClaudeCommand() {
+      return { exitCode: 0, stdout: "", stderr: "", timedOut: false };
+    },
+    async probeClaudeRuntime() {
+      return detail === "DWEMR_READY"
+        ? { status: "ok", detail }
+        : { status: "failed", detail };
+    },
+    async findActiveRun() {
+      return undefined;
+    },
+    async stopActiveRun(_stateDir, projectPath) {
+      return { status: "not_found", projectPath };
+    },
+  };
+}
+
 // ── Simple handlers ────────────────────────────────────────────────────
 
 test("handleEmptyCommand returns runner help", async () => {
@@ -83,7 +125,7 @@ test("handleHelp returns formatted help text", async () => {
     const result = await handleHelp(ctx);
     const text = getText(result);
     assert.match(text, /DWEMR commands:/);
-    assert.match(text, /doctor.*inspect the managed DWEMR runtime/);
+    assert.match(text, /doctor.*inspect the DWEMR runtime, preview ACPX permission repair/);
     assert.match(text, /init.*install the DWEMR bootstrap kit/);
   } finally {
     await ctx.cleanup();
@@ -233,6 +275,148 @@ test("handleDoctor returns diagnostic report", async () => {
   } finally {
     await ctx.cleanup();
     await sandbox.cleanup();
+  }
+});
+
+test("handleDoctor previews ACPX permission repair choices without mutating host config", async () => {
+  const sandbox = await makeTempProject();
+  const ctx = await makeFakeApiContext({
+    defaultProjectPath: sandbox.projectPath,
+    runtimeBackend: createFakeDoctorRuntimeBackend("ACP_TURN_FAILED: Permission prompt unavailable in non-interactive mode"),
+    api: {
+      runtime: {
+        config: {
+          current: {
+            acp: {
+              allowedAgents: ["cursor"],
+              defaultAgent: "cursor",
+            },
+            plugins: {
+              entries: {
+                acpx: {
+                  config: {
+                    permissionMode: "approve-reads",
+                    nonInteractivePermissions: "fail",
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    } as unknown as FakeApiContext["api"],
+  });
+  try {
+    const result = await handleDoctor(ctx, ["doctor", "--fix"]);
+    const text = getText(result);
+    assert.match(text, /Permission repair preview:/);
+    assert.match(text, /\/dwemr doctor --fix --restart/);
+    assert.match(text, /\/dwemr doctor --fix --no-restart/);
+
+    const config = ctx.readConfig();
+    assert.equal((config.plugins as any).entries.acpx.config.permissionMode, "approve-reads");
+    assert.deepEqual((config.acp as any).allowedAgents, ["cursor"]);
+  } finally {
+    await ctx.cleanup();
+    await sandbox.cleanup();
+  }
+});
+
+test("handleDoctor repairs ACPX permissions without touching ACP allowed agents", async () => {
+  const sandbox = await makeTempProject();
+  const ctx = await makeFakeApiContext({
+    defaultProjectPath: sandbox.projectPath,
+    runtimeBackend: createFakeDoctorRuntimeBackend("ACP_TURN_FAILED: Permission prompt unavailable in non-interactive mode"),
+    api: {
+      runtime: {
+        config: {
+          current: {
+            gateway: {
+              reload: { mode: "hot" },
+            },
+            acp: {
+              allowedAgents: ["cursor"],
+              defaultAgent: "cursor",
+            },
+            plugins: {
+              entries: {
+                acpx: {
+                  config: {
+                    permissionMode: "approve-reads",
+                    nonInteractivePermissions: "deny",
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    } as unknown as FakeApiContext["api"],
+  });
+  try {
+    const result = await handleDoctor(ctx, ["doctor", "--fix", "--no-restart"]);
+    const text = getText(result);
+    assert.match(text, /Updated OpenClaw ACPX permission config/);
+    assert.match(text, /manual OpenClaw gateway restart is still required/);
+
+    const config = ctx.readConfig();
+    assert.equal((config.plugins as any).entries.acpx.config.permissionMode, "approve-all");
+    assert.equal((config.plugins as any).entries.acpx.config.nonInteractivePermissions, "fail");
+    assert.deepEqual((config.acp as any).allowedAgents, ["cursor"]);
+    assert.equal((config.acp as any).defaultAgent, "cursor");
+  } finally {
+    await ctx.cleanup();
+    await sandbox.cleanup();
+  }
+});
+
+test("handleDoctor restart repair explains automatic gateway reload when supported", async () => {
+  const sandbox = await makeTempProject();
+  const ctx = await makeFakeApiContext({
+    defaultProjectPath: sandbox.projectPath,
+    runtimeBackend: createFakeDoctorRuntimeBackend("ACP_TURN_FAILED: Permission prompt unavailable in non-interactive mode"),
+    api: {
+      runtime: {
+        config: {
+          current: {
+            gateway: {
+              reload: { mode: "hybrid" },
+            },
+            plugins: {
+              entries: {
+                acpx: {
+                  config: {
+                    permissionMode: "approve-reads",
+                    nonInteractivePermissions: "fail",
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    } as unknown as FakeApiContext["api"],
+  });
+  try {
+    const result = await handleDoctor(ctx, ["doctor", "--fix", "--restart"]);
+    const text = getText(result);
+    assert.match(text, /Gateway reload mode is `hybrid`/);
+    assert.match(text, /should apply the restart path automatically/);
+    assert.match(text, /Wait for the OpenClaw gateway to reload/);
+  } finally {
+    await ctx.cleanup();
+    await sandbox.cleanup();
+  }
+});
+
+test("handleDoctor rejects conflicting restart flags", async () => {
+  const ctx = await makeFakeApiContext();
+  try {
+    const result = await handleDoctor(ctx, ["doctor", "--fix", "--restart", "--no-restart"]);
+    const text = getText(result);
+    assert.match(text, /Choose only one ACPX repair mode/);
+  } finally {
+    await ctx.cleanup();
   }
 });
 

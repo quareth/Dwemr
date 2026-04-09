@@ -1,10 +1,10 @@
 import path from "node:path";
 import type { HandlerContext, HandlerResult } from "./action-handler-types";
 import { textResult } from "./action-handler-types";
-import { buildInitHelp, buildModeHelp, buildRunnerHelp, buildUseHelp, formatHelpText, mapActionToClaudeCommand } from "./command-routing";
+import { buildInitHelp, buildModeHelp, buildSessionHelp, buildRunnerHelp, buildUseHelp, formatHelpText, mapActionToClaudeCommand } from "./command-routing";
 import { formatRunnerResult, translateClaudeCommandSurface } from "./claude-runner";
 import { formatDoctorText, preflightExecution, runDwemrDoctor } from "./doctor";
-import { getDefaultRuntimeBackend, type DwemrRuntimeBackend } from "./runtime-backend";
+import { getDefaultRuntimeBackend, type DwemrRuntimeBackend, type DwemrSessionInfo } from "./runtime-backend";
 import {
   formatBootstrapPendingStatus,
   formatOnboardingBlocked,
@@ -17,8 +17,10 @@ import { writeOnboardingState } from "../control-plane/onboarding-state";
 import { syncPipelineExecutionMode, readPipelineStateBrief, formatPipelineStateBrief } from "../control-plane/pipeline-state";
 import {
   normalizeExecutionModeInput,
+  normalizeSessionModeInput,
   readProjectExecutionMode,
   updateProjectExecutionMode,
+  updateProjectSessionMode,
   readProjectModelConfig,
   updateProjectModelField,
   readProjectScmConfig,
@@ -295,7 +297,7 @@ async function runWithEnoentFallback(
   } catch (error) {
     const execError = error as NodeJS.ErrnoException;
     if (execError.code === "ENOENT") {
-      const report = await runDwemrDoctor(ctx.pluginConfig, targetPath, false, runtimeBackend, { stateDir: ctx.stateDir });
+      const report = await runDwemrDoctor(ctx.pluginConfig, targetPath, "inspect", runtimeBackend, { stateDir: ctx.stateDir, api: ctx.api });
       return textResult(formatDoctorText(report, ctx.pluginConfig, ctx.defaultProjectPath));
     }
     return textResult(`DWEMR failed to run \`${claudeCommand}\` in ${targetPath}.\n\n${String(error)}`);
@@ -380,7 +382,12 @@ export async function handleDoctor(ctx: HandlerContext, tokens: string[]): Promi
   const action = tokens[0];
   const doctorTokens = tokens.slice(1);
   const applyFix = action === "repair" || doctorTokens.includes("--fix");
-  const pathTokens = doctorTokens.filter((token) => token !== "--fix");
+  const restartRequested = action === "repair" || doctorTokens.includes("--restart");
+  const noRestartRequested = doctorTokens.includes("--no-restart");
+  if (restartRequested && noRestartRequested) {
+    return textResult("Choose only one ACPX repair mode: `--restart` or `--no-restart`.");
+  }
+  const pathTokens = doctorTokens.filter((token) => token !== "--fix" && token !== "--restart" && token !== "--no-restart");
 
   if (pathTokens.length > 1) {
     return textResult("Too many positional arguments for `doctor`.\n" + buildRunnerHelp(ctx.defaultProjectPath));
@@ -391,7 +398,17 @@ export async function handleDoctor(ctx: HandlerContext, tokens: string[]): Promi
     const project = await inspectProjectHealth(targetPath);
     await rememberProjectSelection(ctx.api, targetPath, { initialized: project.installState !== "missing", setActive: true });
   }
-  const report = await runDwemrDoctor(ctx.pluginConfig, targetPath, applyFix, runtimeBackend, { stateDir: ctx.stateDir });
+  const report = await runDwemrDoctor(
+    ctx.pluginConfig,
+    targetPath,
+    applyFix ? restartRequested || noRestartRequested ? "apply" : "preview" : "inspect",
+    runtimeBackend,
+    {
+      stateDir: ctx.stateDir,
+      api: ctx.api,
+      restartBehavior: restartRequested ? "restart" : "no-restart",
+    },
+  );
   return textResult(formatDoctorText(report, ctx.pluginConfig, ctx.defaultProjectPath));
 }
 
@@ -476,6 +493,132 @@ export async function handleMode(ctx: HandlerContext, tokens: string[]): Promise
         : "DWEMR will now run until the next milestone, then stop and report before waiting for `/dwemr continue`.",
     ].join("\n"),
   );
+}
+
+export async function handleSession(ctx: HandlerContext, tokens: string[]): Promise<HandlerResult> {
+  const sessionTokens = tokens.slice(1);
+  if (sessionTokens.length !== 1) {
+    return textResult(buildSessionHelp(ctx.defaultProjectPath));
+  }
+
+  const sessionMode = normalizeSessionModeInput(sessionTokens[0]);
+  if (!sessionMode) {
+    return textResult(`Unknown session mode: ${sessionTokens[0]}\n` + buildSessionHelp(ctx.defaultProjectPath));
+  }
+
+  const targetPath = ctx.defaultProjectPath;
+  if (!targetPath) {
+    return textResult(
+      [
+        "DWEMR cannot set a session mode yet because there is no active project.",
+        "",
+        "Run `/dwemr init <path>` or `/dwemr use <path>` first, then retry `/dwemr session <stateless|stateful>`.",
+      ].join("\n"),
+    );
+  }
+
+  if (!(await pathExists(targetPath))) {
+    return textResult(
+      [
+        `The active DWEMR project path no longer exists: ${targetPath}`,
+        "",
+        "Run `/dwemr projects` to review remembered paths, then `/dwemr use <path>` or `/dwemr init <path>` before changing session mode.",
+      ].join("\n"),
+    );
+  }
+
+  const project = await inspectProjectHealth(targetPath);
+  if (project.installState === "missing") {
+    return textResult(
+      [
+        `DWEMR cannot set session mode in ${targetPath} because this project is not initialized yet.`,
+        "",
+        `Next: run \`/dwemr init ${targetPath}\` first.`,
+      ].join("\n"),
+    );
+  }
+
+  if (project.installState === "unsupported_contract") {
+    return textResult(formatUnsupportedContract(targetPath, project, "session"));
+  }
+
+  await updateProjectSessionMode(targetPath, sessionMode);
+  await rememberProjectSelection(ctx.api, targetPath, { initialized: true, setActive: true });
+
+  return textResult(
+    sessionMode === "stateful"
+      ? `DWEMR session mode for ${targetPath} is now \`stateful\`. Onboarding will use persistent ACP sessions to maintain conversation context across clarification rounds.`
+      : `DWEMR session mode for ${targetPath} is now \`stateless\`. Each command creates a fresh ACP session.`,
+  );
+}
+
+function formatSessionState(state: string) {
+  switch (state) {
+    case "idle": return "idle";
+    case "running": return "running";
+    case "error": return "ERROR";
+    case "stale": return "stale";
+    case "none": return "not found";
+    default: return state;
+  }
+}
+
+function formatSessionInfo(session: DwemrSessionInfo) {
+  const parts = [
+    `- \`${session.sessionKey}\``,
+    `  State: **${formatSessionState(session.state)}**` +
+      (session.pid ? ` | PID: ${session.pid}` : "") +
+      (session.mode ? ` | Mode: ${session.mode}` : "") +
+      (session.agent ? ` | Agent: ${session.agent}` : ""),
+  ];
+  if (session.projectPath) {
+    parts.push(`  Project: ${session.projectPath}` + (session.action ? ` (${session.action})` : ""));
+  }
+  if (session.lastActivityAt) {
+    const ago = Math.round((Date.now() - session.lastActivityAt) / 1000);
+    parts.push(`  Last activity: ${ago}s ago`);
+  }
+  if (session.lastError) {
+    parts.push(`  Last error: ${session.lastError}`);
+  }
+  return parts.join("\n");
+}
+
+export async function handleSessions(ctx: HandlerContext, tokens: string[]): Promise<HandlerResult> {
+  const runtimeBackend = resolveRuntimeBackend(ctx);
+
+  if (!runtimeBackend.listSessions || !runtimeBackend.clearSessions) {
+    return textResult("Session listing is only available with the ACP-native runtime backend.");
+  }
+
+  const subcommand = tokens[1]?.toLowerCase();
+
+  if (subcommand === "clear") {
+    const result = await runtimeBackend.clearSessions(ctx.stateDir);
+    return textResult(
+      result.closed > 0 || result.failed > 0
+        ? `Cleared ${result.closed} session(s).` + (result.failed > 0 ? ` ${result.failed} failed to close.` : "")
+        : "No DWEMR sessions to clear.",
+    );
+  }
+
+  const { sessions, aggregate } = await runtimeBackend.listSessions(ctx.stateDir);
+
+  const lines: string[] = [];
+  lines.push(`ACP runtime: ${aggregate.activeSessions} active session(s), ${aggregate.evictedTotal} evicted total.`);
+
+  if (sessions.length === 0) {
+    lines.push("", "No tracked DWEMR sessions.");
+  } else {
+    lines.push("", `DWEMR sessions (${sessions.length}):`);
+    for (const session of sessions) {
+      lines.push("", formatSessionInfo(session));
+    }
+  }
+
+  lines.push("", "To clear all sessions: `/dwemr sessions clear`");
+
+  return textResult(lines.join("\n"));
 }
 
 export async function handleModelConfig(ctx: HandlerContext, tokens: string[]): Promise<HandlerResult> {

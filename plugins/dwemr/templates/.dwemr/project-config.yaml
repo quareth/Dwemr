@@ -42,3 +42,6 @@ runtime:
   resume_preference: state_first
 
   recover_missing_state: true
+
+  # stateless | stateful
+  session_mode: stateless

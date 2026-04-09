@@ -22,6 +22,7 @@ export type OnboardingState = {
   selectedPacks: InstallPackName[];
   requiredArtifacts: string[];
   installStage: InstallStage;
+  acpSessionKey: string;
   updatedAt: string;
 };
 
@@ -43,6 +44,7 @@ const ONBOARDING_STATE_DEFAULTS: OnboardingState = {
   selectedPacks: [],
   requiredArtifacts: [],
   installStage: "bootstrap_only",
+  acpSessionKey: "",
   updatedAt: "",
 };
 
@@ -115,6 +117,7 @@ export function normalizeOnboardingState(raw: Partial<OnboardingState> | undefin
     selectedPacks,
     requiredArtifacts,
     installStage: raw?.installStage === "profile_installed" ? "profile_installed" : ONBOARDING_STATE_DEFAULTS.installStage,
+    acpSessionKey: typeof raw?.acpSessionKey === "string" ? raw.acpSessionKey : ONBOARDING_STATE_DEFAULTS.acpSessionKey,
     updatedAt: typeof raw?.updatedAt === "string" ? raw.updatedAt : ONBOARDING_STATE_DEFAULTS.updatedAt,
   };
   const persistedStatus = typeof raw?.status === "string" ? (raw.status as PersistedOnboardingStatus) : ONBOARDING_STATE_DEFAULTS.status;
@@ -127,6 +130,7 @@ export function normalizeOnboardingState(raw: Partial<OnboardingState> | undefin
         clarificationSummary: "",
         clarificationQuestions: [],
         clarificationResponse: "",
+        acpSessionKey: "",
         installStage: normalizedState.installStage === "profile_installed" ? "profile_installed" : "provisioning_pending",
       };
     }
@@ -158,6 +162,7 @@ export function normalizeOnboardingState(raw: Partial<OnboardingState> | undefin
     needsProductFraming: false,
     selectedPacks: [],
     requiredArtifacts: [],
+    acpSessionKey: "",
     installStage: "bootstrap_only",
   };
 }
@@ -226,6 +231,9 @@ export function parseOnboardingState(raw: string) {
       case "install_stage":
         parsed.installStage = value as InstallStage;
         break;
+      case "acp_session_key":
+        parsed.acpSessionKey = String(value);
+        break;
       case "updated_at":
         parsed.updatedAt = String(value);
         break;
@@ -278,6 +286,7 @@ export function formatOnboardingState(state: Partial<OnboardingState>) {
     `selected_packs: ${JSON.stringify(normalized.selectedPacks)}`,
     `required_artifacts: ${JSON.stringify(normalized.requiredArtifacts)}`,
     `install_stage: ${JSON.stringify(normalized.installStage)}`,
+    `acp_session_key: ${JSON.stringify(normalized.acpSessionKey)}`,
     `updated_at: ${JSON.stringify(normalized.updatedAt)}`,
     "---",
     "",

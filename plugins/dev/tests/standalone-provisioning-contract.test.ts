@@ -20,11 +20,18 @@ test("shared CLAUDE guide documents provisioning_pending as a standalone stop co
   assert.match(text, /\/dwemr start <request>/);
 });
 
-test("bootstrap pack does not ship local Claude settings (permissions are set via ACP session API)", () => {
-  const bootstrap = getPackDefinition("bootstrap");
-  const targets = bootstrap.entries.map((entry) => entry.targetPath);
+test("bootstrap Claude settings enable unattended headless DWEMR execution", () => {
+  const text = readRelative("templates/.claude/settings.json");
 
-  assert.ok(!targets.includes(".claude/settings.json"));
+  assert.match(text, /claude-code-settings\.json/);
+  assert.match(text, /"defaultMode": "bypassPermissions"/);
+  assert.match(text, /"allow": \["Bash", "Edit", "Write"\]/);
+});
+
+test("project config template defaults session_mode to stateless", () => {
+  const text = readRelative("templates/.dwemr/project-config.yaml");
+
+  assert.match(text, /session_mode:\s*stateless/);
 });
 
 test("bootstrap pack ships delivery-driver and no longer treats delivery-onboard as a bootstrap command", () => {

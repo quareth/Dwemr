@@ -1,4 +1,4 @@
-import type { DwemrExecutionMode } from "../control-plane/project-config";
+import type { DwemrExecutionMode, DwemrSessionMode } from "../control-plane/project-config";
 import type { ProjectHealth } from "../control-plane/project-assets";
 
 export type ProcessResult = {
@@ -24,6 +24,8 @@ export type ClaudeCommandRunOptions = {
   stateDir?: string;
   action?: string;
   executionMode?: DwemrExecutionMode;
+  sessionMode?: DwemrSessionMode;
+  persistentSessionKey?: string;
 };
 
 const deliveryToDwemrLiteralTranslations: Array<[RegExp, string]> = [

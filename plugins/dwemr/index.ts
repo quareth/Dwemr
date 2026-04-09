@@ -7,6 +7,8 @@ import {
   handleHelp,
   handleProjects,
   handleMode,
+  handleSession,
+  handleSessions,
   handleUse,
   handleDoctor,
   handleStop,
@@ -81,6 +83,8 @@ export default definePluginEntry({
         if (action === "help") return handleHelp(ctx);
         if (action === "projects") return handleProjects(ctx);
         if (action === "mode") return handleMode(ctx, tokens);
+        if (action === "session") return handleSession(ctx, tokens);
+        if (action === "sessions") return handleSessions(ctx, tokens);
         if (action === "use") return handleUse(ctx, tokens);
         if (action === "doctor" || action === "repair") return handleDoctor(ctx, tokens);
         if (action === "stop") return handleStop(ctx, tokens);

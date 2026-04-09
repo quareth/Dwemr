@@ -3,9 +3,11 @@ import path from "node:path";
 import type { WorkflowProfile } from "../../install-packs";
 
 export type DwemrExecutionMode = "autonomous" | "checkpointed";
+export type DwemrSessionMode = "stateless" | "stateful";
 export type DwemrProjectSize = WorkflowProfile;
 
 export const DEFAULT_EXECUTION_MODE: DwemrExecutionMode = "autonomous";
+export const DEFAULT_SESSION_MODE: DwemrSessionMode = "stateless";
 export const PROJECT_CONFIG_RELATIVE_PATH = path.join(".dwemr", "project-config.yaml");
 
 function splitLines(raw: string) {
@@ -172,6 +174,79 @@ export function setProjectSize(raw: string, projectSize: DwemrProjectSize) {
 
   lines.splice(start + 1, 0, newLine);
   return lines.join("\n");
+}
+
+function findRuntimeSection(lines: string[]) {
+  return findTopLevelSection(lines, "runtime");
+}
+
+export function normalizeSessionModeInput(value: string | undefined): DwemrSessionMode | undefined {
+  const normalized = value?.trim().toLowerCase();
+  if (!normalized) {
+    return;
+  }
+  if (normalized === "stateless" || normalized === "stateful") {
+    return normalized;
+  }
+  return;
+}
+
+export function parseProjectSessionMode(raw: string): DwemrSessionMode {
+  const lines = splitLines(raw);
+  const { start, end } = findRuntimeSection(lines);
+
+  if (start < 0) {
+    return DEFAULT_SESSION_MODE;
+  }
+
+  for (let index = start + 1; index < end; index += 1) {
+    const match = lines[index].match(/^\s{2}session_mode:\s*["']?([A-Za-z_-]+)["']?\s*(?:#.*)?$/);
+    if (!match) {
+      continue;
+    }
+
+    return normalizeSessionModeInput(match[1]) ?? DEFAULT_SESSION_MODE;
+  }
+
+  return DEFAULT_SESSION_MODE;
+}
+
+export function setProjectSessionMode(raw: string, sessionMode: DwemrSessionMode) {
+  const lines = splitLines(raw);
+  const { start, end } = findRuntimeSection(lines);
+  const newLine = `  session_mode: ${sessionMode}`;
+
+  if (start < 0) {
+    const prefix = lines.length > 0 && lines[lines.length - 1].trim().length > 0 ? [""] : [];
+    return [...lines, ...prefix, "runtime:", newLine].join("\n");
+  }
+
+  for (let index = start + 1; index < end; index += 1) {
+    if (/^\s{2}session_mode:\s*/.test(lines[index])) {
+      lines[index] = newLine;
+      return lines.join("\n");
+    }
+  }
+
+  lines.splice(end, 0, newLine);
+  return lines.join("\n");
+}
+
+export async function readProjectSessionMode(targetPath: string): Promise<DwemrSessionMode> {
+  try {
+    const raw = await readFile(resolveProjectConfigPath(targetPath), "utf8");
+    return parseProjectSessionMode(raw);
+  } catch {
+    return DEFAULT_SESSION_MODE;
+  }
+}
+
+export async function updateProjectSessionMode(targetPath: string, sessionMode: DwemrSessionMode) {
+  const configPath = resolveProjectConfigPath(targetPath);
+  const raw = await readFile(configPath, "utf8");
+  const next = setProjectSessionMode(raw, sessionMode);
+  await writeFile(configPath, next, "utf8");
+  return { configPath, sessionMode };
 }
 
 export type DwemrProjectModelConfig = {

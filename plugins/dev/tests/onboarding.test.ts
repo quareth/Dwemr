@@ -3,10 +3,10 @@ import test from "node:test";
 import { readFileSync } from "node:fs";
 import { formatDoctorText } from "../../dwemr/src/openclaw/doctor";
 import { formatBootstrapPendingStatus, prepareOnboardingStateForEntry } from "../../dwemr/src/control-plane/onboarding-flow";
-import { formatOnboardingState, normalizeOnboardingState } from "../../dwemr/src/control-plane/onboarding-state";
+import { formatOnboardingState, normalizeOnboardingState, parseOnboardingState } from "../../dwemr/src/control-plane/onboarding-state";
 import type { DwemrPluginConfig } from "../../dwemr/src/openclaw/project-selection";
 import type { DwemrRuntimeInspection } from "../../dwemr/src/openclaw/runtime";
-import type { DwemrRuntimeState } from "../../dwemr/src/openclaw/runtime-backend";
+import { buildAcpRuntimeOptionPatch, type DwemrRuntimeState } from "../../dwemr/src/openclaw/runtime-backend";
 import { DWEMR_CONTRACT_VERSION } from "../../dwemr/src/control-plane/state-contract";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -113,6 +113,46 @@ test("prepareOnboardingStateForEntry preserves the original request when answeri
   assert.equal(prepared.clarificationResponse, "It should stay a bounded internal tool.");
 });
 
+test("normalizeOnboardingState preserves acpSessionKey during awaiting_clarification and clears on complete or pending", () => {
+  const awaiting = normalizeOnboardingState({
+    status: "pending",
+    requestContext: "Build a tool.",
+    clarificationSummary: "Need one answer.",
+    clarificationQuestions: ["What kind?"],
+    acpSessionKey: "agent:claude:acp:dwemr-abc123:onboarding",
+  });
+  assert.equal(awaiting.status, "awaiting_clarification");
+  assert.equal(awaiting.acpSessionKey, "agent:claude:acp:dwemr-abc123:onboarding");
+
+  const complete = normalizeOnboardingState({
+    status: "pending",
+    selectedProfile: "minimal_tool",
+    acpSessionKey: "agent:claude:acp:dwemr-abc123:onboarding",
+  });
+  assert.equal(complete.status, "complete");
+  assert.equal(complete.acpSessionKey, "");
+
+  const pending = normalizeOnboardingState({
+    status: "pending",
+    requestContext: "Build a tool.",
+    acpSessionKey: "agent:claude:acp:dwemr-abc123:onboarding",
+  });
+  assert.equal(pending.status, "pending");
+  assert.equal(pending.acpSessionKey, "");
+});
+
+test("onboarding state serialization round-trips acpSessionKey", () => {
+  const state = normalizeOnboardingState({
+    status: "pending",
+    requestContext: "Build a tool.",
+    clarificationSummary: "Need one answer.",
+    clarificationQuestions: ["What kind?"],
+    acpSessionKey: "agent:claude:acp:dwemr-abc123:onboarding",
+  });
+  const serialized = formatOnboardingState(state);
+  assert.match(serialized, /acp_session_key: "agent:claude:acp:dwemr-abc123:onboarding"/);
+});
+
 test("formatBootstrapPendingStatus points pending clarification back to start", () => {
   const text = formatBootstrapPendingStatus(
     "/tmp/dwemr-project",
@@ -152,7 +192,10 @@ test("formatDoctorText points clarification follow-up to start and keeps what-no
         }),
       }),
       fixApplied: false,
+      fixMode: "inspect",
       fixNotes: [],
+      previewNotes: [],
+      automationNotes: [],
       claudeProbe: { status: "skipped", detail: "Skipped because no execution runtime is ready yet." },
     },
     {} satisfies DwemrPluginConfig,
@@ -174,9 +217,12 @@ test("formatDoctorText points unsupported contracts to init overwrite", () => {
         contractIssues: [`.dwemr/state/pipeline-state.md: missing \`dwemr_contract_version: ${DWEMR_CONTRACT_VERSION}\``],
       }),
       fixApplied: true,
+      fixMode: "apply",
       fixNotes: [
         "DWEMR did not auto-upgrade /tmp/dwemr-project. Run `/dwemr init /tmp/dwemr-project --overwrite --confirm-overwrite` to destroy the current target folder contents and adopt the current contract from scratch.",
       ],
+      previewNotes: [],
+      automationNotes: [],
       claudeProbe: { status: "skipped", detail: "Skipped because no execution runtime is ready yet." },
     },
     {} satisfies DwemrPluginConfig,
@@ -200,10 +246,13 @@ test("formatDoctorText gives ACPX recovery guidance when runtime bootstrap still
       runtimeLedgerNotes: [],
       project: buildProjectHealth(),
       fixApplied: true,
+      fixMode: "apply",
       fixNotes: [
         "Could not bootstrap the managed ACPX runtime automatically.",
         "OpenClaw's ACPX runtime plugin is installed, but DWEMR could not find a runnable ACPX command from that install.",
       ],
+      previewNotes: [],
+      automationNotes: [],
       claudeProbe: { status: "skipped", detail: "Skipped because no execution runtime is ready yet." },
     },
     {} satisfies DwemrPluginConfig,
@@ -233,9 +282,12 @@ test("formatDoctorText no-extension ACPX guidance does not mention PATH fallback
       runtimeLedgerNotes: [],
       project: buildProjectHealth(),
       fixApplied: true,
+      fixMode: "apply",
       fixNotes: [
         "Could not bootstrap the managed ACPX runtime automatically.",
       ],
+      previewNotes: [],
+      automationNotes: [],
       claudeProbe: { status: "skipped", detail: "Skipped because no execution runtime is ready yet." },
     },
     {} satisfies DwemrPluginConfig,
@@ -244,6 +296,17 @@ test("formatDoctorText no-extension ACPX guidance does not mention PATH fallback
 
   assert.match(text, /No OpenClaw ACPX runtime was detected for DWEMR bootstrap\./);
   assert.doesNotMatch(text, /PATH-based `acpx` executable/);
+});
+
+test("buildAcpRuntimeOptionPatch keeps only model, cwd, and timeout for ACP-native sessions", () => {
+  const patch = buildAcpRuntimeOptionPatch("/tmp/dwemr-project", { model: "claude-sonnet-4-6" }, 60);
+
+  assert.deepEqual(patch, {
+    model: "claude-sonnet-4-6",
+    cwd: "/tmp/dwemr-project",
+    timeoutSeconds: 60,
+  });
+  assert.ok(!("permissionProfile" in patch));
 });
 
 test("formatOnboardingState renders clarification and plain pending states differently", () => {

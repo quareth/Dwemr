@@ -168,7 +168,10 @@ test("ACP-native command run uses one-shot session, owner session binding, and c
   });
 
   let initializedMode: string | undefined;
+  const closeCalls: Array<{ sessionKey: string; reason: string; clearMeta?: boolean; discardPersistentState?: boolean }> = [];
   let releaseTurn: (() => void) | undefined;
+  let releaseClose: (() => void) | undefined;
+  let sessionState: "ready" | "none" = "ready";
   const runTurnEntered = new Promise<void>((resolve) => {
     acpRuntimeTesting.setAcpSessionManagerForTests({
       async initializeSession(params: { mode?: string }) {
@@ -191,6 +194,32 @@ test("ACP-native command run uses one-shot session, owner session binding, and c
       },
       async cancelSession() {
         return;
+      },
+      async closeSession(params: { sessionKey: string; reason: string; clearMeta?: boolean; discardPersistentState?: boolean }) {
+        closeCalls.push(params);
+        await new Promise<void>((resolve) => {
+          releaseClose = resolve;
+        });
+        sessionState = "none";
+        return { runtimeClosed: true, metaCleared: true };
+      },
+      resolveSession(params: { sessionKey: string }) {
+        if (sessionState === "none") {
+          return { kind: "none", sessionKey: params.sessionKey };
+        }
+        return {
+          kind: "ready",
+          sessionKey: params.sessionKey,
+          meta: {
+            state: "running",
+            mode: "oneshot",
+            agent: "claude",
+            backend: "test-acp",
+            runtimeOptions: {},
+            capabilities: {},
+            lastActivityAt: Date.now(),
+          },
+        };
       },
     });
   });
@@ -244,6 +273,15 @@ test("ACP-native command run uses one-shot session, owner session binding, and c
     assert.equal(initializedMode, "oneshot");
 
     releaseTurn?.();
+    await sleep(10);
+    const stillTrackedDuringClose = await findActiveRun(stateDir, targetPath, { backendKind: "acp-native" });
+    assert.ok(stillTrackedDuringClose);
+    assert.equal(closeCalls.length, 1);
+    assert.equal(closeCalls[0]?.reason, "dwemr-command-cleanup");
+    assert.equal(closeCalls[0]?.clearMeta, true);
+    assert.equal(closeCalls[0]?.discardPersistentState, true);
+
+    releaseClose?.();
     const result = await runPromise;
     assert.equal(result.exitCode, 0);
     assert.equal(result.stdout, "hello world");
@@ -270,9 +308,9 @@ test("ACP-native run works without taskFlow and keeps flow/task identity unset",
       async updateSessionRuntimeOptions() {
         return;
       },
-      async runTurn(params: {
-        onEvent?: (event: { type: string; text?: string; stream?: string }) => void | Promise<void>;
-      }) {
+    async runTurn(params: {
+      onEvent?: (event: { type: string; text?: string; stream?: string }) => void | Promise<void>;
+    }) {
         resolve();
         await new Promise<void>((turnResolve) => {
           releaseTurn = turnResolve;
@@ -282,6 +320,12 @@ test("ACP-native run works without taskFlow and keeps flow/task identity unset",
       },
       async cancelSession() {
         return;
+      },
+      async closeSession() {
+        return { runtimeClosed: true, metaCleared: true };
+      },
+      resolveSession() {
+        return { kind: "none", sessionKey: "ignored" };
       },
     });
   });
@@ -346,6 +390,12 @@ test("ACP-native timeout errors map to timedOut process results", async () => {
     async cancelSession() {
       return;
     },
+    async closeSession() {
+      return { runtimeClosed: true, metaCleared: true };
+    },
+    resolveSession() {
+      return { kind: "none", sessionKey: "ignored" };
+    },
   });
 
   const backend = getDefaultRuntimeBackend({
@@ -385,6 +435,12 @@ test("ACP-native pre-turn initialization failures do not create flow/task ledger
     },
     async cancelSession() {
       return;
+    },
+    async closeSession() {
+      return { runtimeClosed: true, metaCleared: true };
+    },
+    resolveSession() {
+      return { kind: "none", sessionKey: "ignored" };
     },
   });
 
@@ -450,6 +506,12 @@ test("ACP-native leaves timeoutSeconds unset for timeoutMs=null", async () => {
     async cancelSession() {
       return;
     },
+    async closeSession() {
+      return { runtimeClosed: true, metaCleared: true };
+    },
+    resolveSession() {
+      return { kind: "none", sessionKey: "ignored" };
+    },
   });
 
   const backend = getDefaultRuntimeBackend({
@@ -512,6 +574,75 @@ test("ACP-native stop cancels session using childSessionKey", async () => {
 
     const activeRun = await findActiveRun(stateDir, targetPath, { backendKind: "acp-native" });
     assert.equal(activeRun, undefined);
+  } finally {
+    await rm(stateDir, { recursive: true, force: true });
+    resetRuntimeHarness();
+  }
+});
+
+test("ACP-native keeps tracked run when one-shot cleanup cannot close the session", async () => {
+  resetRuntimeHarness();
+  registerFakeAcpBackend();
+
+  acpRuntimeTesting.setAcpSessionManagerForTests({
+    async initializeSession() {
+      return;
+    },
+    async updateSessionRuntimeOptions() {
+      return;
+    },
+    async runTurn(params: {
+      onEvent?: (event: { type: string; text?: string; stream?: string }) => void | Promise<void>;
+    }) {
+      await params.onEvent?.({ type: "text_delta", stream: "output", text: "done" });
+      await params.onEvent?.({ type: "done" });
+    },
+    async cancelSession() {
+      return;
+    },
+    async closeSession() {
+      throw new AcpRuntimeError("ACP_CLOSE_FAILED", "cleanup close failed");
+    },
+    resolveSession(params: { sessionKey: string }) {
+      return {
+        kind: "ready",
+        sessionKey: params.sessionKey,
+        meta: {
+          state: "running",
+          mode: "oneshot",
+          agent: "claude",
+          backend: "test-acp",
+          runtimeOptions: {},
+          capabilities: {},
+          lastActivityAt: Date.now(),
+        },
+      };
+    },
+  });
+
+  const stateDir = await mkdtemp(path.join(os.tmpdir(), "dwemr-runtime-backend-test-"));
+  const targetPath = path.join(stateDir, "project");
+  const backend = getDefaultRuntimeBackend({
+    preferredKind: "acp-native",
+    runtimeContext: { api: buildRuntimeApi({ backendId: "test-acp" }) },
+  });
+
+  try {
+    const result = await backend.runClaudeCommand({
+      targetPath,
+      claudeCommand: "/delivery-continue",
+      options: {
+        stateDir,
+        action: "continue",
+      },
+    });
+
+    assert.equal(result.exitCode, 0);
+    assert.match(result.stderr, /ACP_CLOSE_FAILED/);
+
+    const activeRun = await findActiveRun(stateDir, targetPath, { backendKind: "acp-native" });
+    assert.ok(activeRun);
+    assert.equal(activeRun.identity.backendKind, "acp-native");
   } finally {
     await rm(stateDir, { recursive: true, force: true });
     resetRuntimeHarness();

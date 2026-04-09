@@ -99,6 +99,7 @@ const commandAssets = [
 
 const bootstrapEntries = [
   templateAsset("CLAUDE.md"),
+  templateAsset(".claude/settings.json"),
   templateAsset(".claude/agents/interviewer.md"),
   templateAsset(".claude/agents/prompt-enhancer.md"),
   templateAsset(".claude/agents/team-map.md"),

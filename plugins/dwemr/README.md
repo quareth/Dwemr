@@ -256,7 +256,7 @@ DWEMR also remembers multiple project paths in its own state storage while keepi
 
 1. Install or link the plugin.
 2. Run `/dwemr help` or `/dwemr doctor <path>`.
-3. If DWEMR reports missing runtime state, run `/dwemr doctor <path> --fix`.
+3. If DWEMR reports missing runtime state or ACPX permission issues, run `/dwemr doctor <path> --fix`.
 4. Make sure Claude Code is authenticated on the machine with `claude auth status`.
 5. Run `/dwemr init <path>`.
 6. Run `/dwemr start <request>` to complete onboarding and let DWEMR provision the selected workflow profile.
@@ -283,18 +283,28 @@ In `autonomous` mode, long-running DWEMR execution commands are allowed to keep 
 
 - whether the selected runtime backend is ready
 - ACP-native seam availability (`tasks.flows` required, `taskFlow` compatibility)
+- whether ACPX host permission config matches DWEMR's ACP-native automation requirements
 - legacy ACPX compatibility diagnostics when spawn compatibility is in use
 - whether the target project exists
 - whether the project is missing DWEMR assets, bootstrap-only, or fully profile-installed
 - whether onboarding is pending, waiting on clarification, or complete
 - whether the configured runtime can execute a DWEMR health-check prompt
 
-`/dwemr doctor [path] --fix` will try to:
+`/dwemr doctor [path] --fix` now previews ACPX permission repair when ACP-native automation is blocked. It explains the root cause and prints exactly two follow-up commands:
+
+- `/dwemr doctor [path] --fix --restart`
+- `/dwemr doctor [path] --fix --no-restart`
+
+`/dwemr doctor [path] --fix --restart` and `/dwemr doctor [path] --fix --no-restart` will try to:
 
 - bootstrap or repair the configured runtime backend path
 - reuse the bundled ACPX source shipped with OpenClaw when available
+- repair `plugins.entries.acpx.config.permissionMode` to `approve-all`
+- repair `plugins.entries.acpx.config.nonInteractivePermissions` to `fail`
 - install missing DWEMR bootstrap assets without requiring a separate shell setup step
 - finish profile provisioning only when onboarding has already selected a profile
+
+For ACP-native runs, ACPX owns shell and file-write permissions. `.claude/settings.json` and Claude CLI bypass flags do not override ACPX harness policy. When doctor repairs ACPX permission config with `--restart`, it inspects `gateway.reload.mode` and tells you whether OpenClaw should apply the restart path automatically or whether a manual restart is still required.
 
 ## Verification checklist
 
@@ -302,7 +312,10 @@ After shipping or installing a new DWEMR build, verify these flows:
 
 - missing runtime: `/dwemr help` still works before any bootstrap
 - missing runtime: `/dwemr doctor <path>` reports the runtime as not ready
-- self-heal: `/dwemr doctor <path> --fix` creates a usable managed runtime
+- ACPX preview: `/dwemr doctor <path> --fix` prints the two repair choices without mutating host ACPX permission config
+- ACPX repair only: `/dwemr doctor <path> --fix --no-restart` repairs ACPX permission config and preserves unrelated OpenClaw config
+- ACPX restart-aware repair: `/dwemr doctor <path> --fix --restart` explains whether OpenClaw should restart/apply automatically based on `gateway.reload.mode`
+- self-heal: `/dwemr doctor <path> --fix --restart` or `--no-restart` creates a usable managed runtime when ACPX permission config was the blocker
 - repaired runtime: `/dwemr doctor <path>` reports a ready execution runtime afterward
 - repaired runtime: `/dwemr status` succeeds after self-heal
 - bootstrap-only project: `/dwemr doctor <path>` reports onboarding as pending instead of corruption
@@ -316,6 +329,7 @@ After shipping or installing a new DWEMR build, verify these flows:
 - onboarding flow: `/dwemr start <request>` can run onboarding, provision the selected profile, and continue the original command
 - release gating: `/dwemr release` and `/dwemr pr` return an explicit unavailable message when git is not enabled for the project
 - healthy Claude runtime: `/dwemr doctor <path>` confirms auth, session ensure, and a quiet prompt
+- agent policy guardrail: doctor diagnoses `claude` ACP allowlist/default-agent policy issues without auto-editing `acp.allowedAgents` or `acp.defaultAgent`
 - clean response surface: `/dwemr status` returns only the final assistant message on success
 
 ## Bundled workflow assets

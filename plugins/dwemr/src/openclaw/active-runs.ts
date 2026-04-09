@@ -1,6 +1,10 @@
+import { execFile } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { promisify } from "node:util";
 import type { DwemrExecutionMode } from "../control-plane/project-config";
+
+const execFileAsync = promisify(execFile);
 
 const ACTIVE_RUNS_RELATIVE_PATH = path.join("tools", "dwemr", "active-runs.json");
 const STOP_GRACE_PERIOD_MS = 3_000;
@@ -143,7 +147,7 @@ function normalizeActiveRun(raw: Partial<DwemrActiveRun>): DwemrActiveRun | unde
   } satisfies DwemrActiveRun;
 }
 
-function isProcessRunning(pid: number) {
+export function isProcessRunning(pid: number) {
   try {
     process.kill(pid, 0);
     return true;
@@ -186,12 +190,12 @@ async function writeActiveRuns(stateDir: string, runs: DwemrActiveRun[]) {
   await writeFile(targetPath, `${JSON.stringify({ runs }, null, 2)}\n`, "utf8");
 }
 
-function isActiveSpawnRun(run: DwemrActiveRun) {
-  if (run.identity.backendKind !== "spawn") {
-    return true;
-  }
+function isActiveRun(run: DwemrActiveRun) {
   const pid = run.pid ?? run.identity.pid;
-  return typeof pid === "number" && isProcessRunning(pid);
+  if (typeof pid !== "number") {
+    return true; // No PID — can't prove dead, keep it.
+  }
+  return isProcessRunning(pid);
 }
 
 export function resolveActiveRunsPath(stateDir: string) {
@@ -204,7 +208,7 @@ export async function loadActiveRuns(stateDir: string, options: LoadActiveRunsOp
     .filter((run): run is DwemrActiveRun => Boolean(run));
 
   const pruneStale = options.pruneStale ?? true;
-  const baseRuns = pruneStale ? normalized.filter(isActiveSpawnRun) : normalized;
+  const baseRuns = pruneStale ? normalized.filter(isActiveRun) : normalized;
   if (pruneStale && baseRuns.length !== normalized.length) {
     await writeActiveRuns(stateDir, baseRuns);
   }
@@ -269,6 +273,82 @@ export async function findActiveRun(stateDir: string, projectPath: string, optio
   return runs.find((run) => run.projectPath === normalizedProjectPath);
 }
 
+export type KillProcessResult =
+  | { status: "already_exited" }
+  | { status: "killed"; signal: "SIGTERM" | "SIGKILL" }
+  | { status: "failed"; error: string };
+
+export async function killProcessWithEscalation(pid: number): Promise<KillProcessResult> {
+  if (!isProcessRunning(pid)) {
+    return { status: "already_exited" };
+  }
+
+  try {
+    process.kill(pid, "SIGTERM");
+  } catch (error) {
+    const execError = error as NodeJS.ErrnoException;
+    if (execError.code === "ESRCH") {
+      return { status: "already_exited" };
+    }
+    return { status: "failed", error: String(error) };
+  }
+
+  if (await waitForProcessExit(pid, STOP_GRACE_PERIOD_MS)) {
+    return { status: "killed", signal: "SIGTERM" };
+  }
+
+  try {
+    process.kill(pid, "SIGKILL");
+  } catch (error) {
+    const execError = error as NodeJS.ErrnoException;
+    if (execError.code === "ESRCH") {
+      return { status: "killed", signal: "SIGTERM" };
+    }
+    return { status: "failed", error: String(error) };
+  }
+
+  if (await waitForProcessExit(pid, STOP_GRACE_PERIOD_MS)) {
+    return { status: "killed", signal: "SIGKILL" };
+  }
+
+  return { status: "failed", error: `Process ${pid} did not exit after SIGTERM and SIGKILL.` };
+}
+
+export async function snapshotChildPids(filter: string): Promise<number[]> {
+  try {
+    const { stdout } = await execFileAsync("pgrep", ["-f", filter]);
+    return stdout.trim().split("\n").map(Number).filter((pid) => pid > 0 && Number.isInteger(pid));
+  } catch {
+    return [];
+  }
+}
+
+export async function resolveCwdForPid(pid: number): Promise<string | undefined> {
+  try {
+    const { stdout } = await execFileAsync("lsof", ["-a", "-d", "cwd", "-p", String(pid), "-Fn"]);
+    for (const line of stdout.split("\n")) {
+      if (line.startsWith("n/")) {
+        return line.slice(1);
+      }
+    }
+    return undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export async function updateActiveRunPid(stateDir: string, projectPath: string, runId: string, pid: number) {
+  const normalizedProjectPath = resolveProjectPath(projectPath);
+  const existing = await loadActiveRuns(stateDir, { pruneStale: false });
+  for (const run of existing) {
+    if (run.projectPath === normalizedProjectPath && run.identity.runId === runId) {
+      run.pid = pid;
+      run.identity.pid = pid;
+    }
+  }
+  await writeActiveRuns(stateDir, existing);
+}
+
 export async function stopActiveRun(stateDir: string, projectPath: string): Promise<StopActiveRunResult> {
   const normalizedProjectPath = resolveProjectPath(projectPath);
   const run = await findActiveRun(stateDir, normalizedProjectPath, { backendKind: "spawn" });
@@ -286,56 +366,14 @@ export async function stopActiveRun(stateDir: string, projectPath: string): Prom
     };
   }
 
-  if (!isProcessRunning(pid)) {
+  const killResult = await killProcessWithEscalation(pid);
+  if (killResult.status === "already_exited") {
     await clearActiveRun(stateDir, normalizedProjectPath, { pid, runId: run.identity.runId, backendKind: "spawn" });
     return { status: "already_exited", run };
   }
-
-  try {
-    process.kill(pid, "SIGTERM");
-  } catch (error) {
-    const execError = error as NodeJS.ErrnoException;
-    if (execError.code === "ESRCH") {
-      await clearActiveRun(stateDir, normalizedProjectPath, { pid, runId: run.identity.runId, backendKind: "spawn" });
-      return { status: "already_exited", run };
-    }
-
-    return {
-      status: "failed",
-      run,
-      error: String(error),
-    };
-  }
-
-  if (await waitForProcessExit(pid, STOP_GRACE_PERIOD_MS)) {
+  if (killResult.status === "killed") {
     await clearActiveRun(stateDir, normalizedProjectPath, { pid, runId: run.identity.runId, backendKind: "spawn" });
-    return { status: "stopped", run, signal: "SIGTERM" };
+    return { status: "stopped", run, signal: killResult.signal };
   }
-
-  try {
-    process.kill(pid, "SIGKILL");
-  } catch (error) {
-    const execError = error as NodeJS.ErrnoException;
-    if (execError.code === "ESRCH") {
-      await clearActiveRun(stateDir, normalizedProjectPath, { pid, runId: run.identity.runId, backendKind: "spawn" });
-      return { status: "stopped", run, signal: "SIGTERM" };
-    }
-
-    return {
-      status: "failed",
-      run,
-      error: String(error),
-    };
-  }
-
-  if (await waitForProcessExit(pid, STOP_GRACE_PERIOD_MS)) {
-    await clearActiveRun(stateDir, normalizedProjectPath, { pid, runId: run.identity.runId, backendKind: "spawn" });
-    return { status: "stopped", run, signal: "SIGKILL" };
-  }
-
-  return {
-    status: "failed",
-    run,
-    error: `Process ${pid} did not exit after SIGTERM and SIGKILL.`,
-  };
+  return { status: "failed", run, error: killResult.error };
 }

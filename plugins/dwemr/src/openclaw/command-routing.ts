@@ -73,7 +73,7 @@ function formatProjectScopedHelp(command: string, suffix: string, description: s
 function formatUsageForProject(defaultProjectPath: string | undefined) {
   return [
     "DWEMR commands:",
-    "- /dwemr doctor [path] [--fix]",
+    "- /dwemr doctor [path] [--fix] [--restart|--no-restart]",
     "- /dwemr init [path] [--overwrite] [--confirm-overwrite]",
     "- /dwemr mode <auto|checkpointed>",
     "- /dwemr projects",
@@ -97,9 +97,11 @@ function formatUsageForProject(defaultProjectPath: string | undefined) {
 export function formatHelpText(defaultProjectPath: string | undefined) {
   const lines = [
     "DWEMR commands:",
-    "- doctor [path] [--fix]: inspect the managed DWEMR runtime and optionally self-heal it",
+    "- doctor [path] [--fix] [--restart|--no-restart]: inspect the DWEMR runtime, preview ACPX permission repair, and optionally self-heal it",
     "- init [path] [--overwrite] [--confirm-overwrite]: install the DWEMR bootstrap kit; overwrite recreates the target folder from scratch",
     "- mode <auto|checkpointed>: set the execution mode for the active DWEMR project",
+    "- session <stateless|stateful>: set the ACP session mode for the active DWEMR project",
+    "- sessions [clear]: list ACP sessions tracked by DWEMR, or clear them all",
     "- projects: list remembered DWEMR projects and show which one is active",
     "- help: list DWEMR commands and what each one does",
     "- use <path>: remember a project path and make it the active project",
@@ -151,6 +153,21 @@ export function buildModeHelp(defaultProjectPath: string | undefined) {
     "Usage: /dwemr mode <auto|checkpointed>",
     "Example: /dwemr mode checkpointed",
     "Behavior: updates `.dwemr/project-config.yaml` for the active DWEMR project.",
+  ];
+  if (defaultProjectPath) {
+    lines.push(`Active DWEMR project: ${defaultProjectPath}`);
+  }
+  return lines.join("\n");
+}
+
+export function buildSessionHelp(defaultProjectPath: string | undefined) {
+  const lines = [
+    "Usage: /dwemr session <stateless|stateful>",
+    "Example: /dwemr session stateful",
+    "Behavior: updates `runtime.session_mode` in `.dwemr/project-config.yaml`.",
+    "",
+    "- stateless (default): each command creates a fresh ACP session.",
+    "- stateful: onboarding uses persistent ACP sessions to maintain conversation context across clarification rounds.",
   ];
   if (defaultProjectPath) {
     lines.push(`Active DWEMR project: ${defaultProjectPath}`);
