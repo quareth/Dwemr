@@ -228,6 +228,7 @@ test("handleDoctor returns diagnostic report", async () => {
     const text = getText(result);
     assert.match(text, /DWEMR doctor/);
     assert.match(text, /Runtime:/);
+    assert.match(text, /Runtime ledger:/);
     assert.match(text, /Project:/);
   } finally {
     await ctx.cleanup();
@@ -474,6 +475,7 @@ test("handleGenericRouted returns bootstrap pending status for status action", a
     const text = getText(result);
     assert.match(text, /DWEMR status for/);
     assert.match(text, /Install state: bootstrap_only/);
+    assert.match(text, /Active runtime owner:/);
   } finally {
     await ctx.cleanup();
     await sandbox.cleanup();
@@ -524,8 +526,13 @@ test("formatStopResult handles already_exited status", () => {
       action: "continue",
       claudeCommand: "/delivery-continue",
       sessionName: "dwemr-test",
+      identity: {
+        backendKind: "spawn",
+        runId: "spawn:/tmp/test:12345:test",
+        pid: 12345,
+      },
     },
   });
-  assert.match(text, /No live DWEMR process was still running/);
+  assert.match(text, /No active DWEMR runtime owner was still in flight/);
   assert.match(text, /Cleared the stale active-run record/);
 });

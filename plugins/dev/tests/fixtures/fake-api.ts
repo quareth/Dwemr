@@ -20,6 +20,8 @@ export async function makeFakeApiContext(overrides?: Partial<HandlerContext>): P
     stateDir: stateRoot,
     defaultProjectPath: overrides?.defaultProjectPath ?? undefined,
     api: fakeApi,
+    runtimeContext: overrides?.runtimeContext,
+    runtimeBackend: overrides?.runtimeBackend,
     async cleanup() {
       await rm(stateRoot, { recursive: true, force: true });
     },

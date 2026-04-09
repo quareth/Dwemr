@@ -1,24 +1,36 @@
-import { ensureManagedDwemrRuntime, inspectDwemrRuntime, type DwemrRuntimeInspection } from "./runtime";
 import { hasSavedClarificationBatch } from "../control-plane/onboarding-state";
 import { inspectProjectHealth, provisionProjectProfile, repairBootstrapAssets, type ProjectHealth } from "../control-plane/project-assets";
-import { probeClaudeRuntime, type ClaudeRuntimeProbe } from "./claude-runner";
+import { readPipelineStateBrief } from "../control-plane/pipeline-state";
+import type { ClaudeRuntimeProbe } from "./claude-runner";
 import type { DwemrPluginConfig } from "./project-selection";
 import { DWEMR_CONTRACT_VERSION } from "../control-plane/state-contract";
+import type { DwemrRuntimeInspection } from "./runtime";
+import { getDefaultRuntimeBackend, type DwemrRuntimeBackend, type DwemrRuntimeState } from "./runtime-backend";
 
 export type DwemrDoctorReport = {
-  runtime: DwemrRuntimeInspection;
+  runtime: DwemrRuntimeState;
+  runtimeReady: boolean;
   project?: ProjectHealth;
+  runtimeLedgerNotes: string[];
   fixApplied: boolean;
   fixNotes: string[];
   claudeProbe: ClaudeRuntimeProbe;
 };
 
-export function formatRuntimeSource(runtime: DwemrRuntimeInspection) {
-  if (runtime.readySource === "managed") {
-    return `managed runtime (${runtime.managedCommandPath})`;
+function getShellInspection(runtime: DwemrRuntimeState) {
+  return runtime.shellInspection;
+}
+
+export function formatRuntimeSource(runtime: DwemrRuntimeState) {
+  const shell = getShellInspection(runtime);
+  if (!shell) {
+    return `${runtime.backendKind} runtime (${runtime.ready ? "ready" : "not ready"})`;
   }
-  if (runtime.readySource === "override" && runtime.readyCommandPath) {
-    return `configured override (${runtime.readyCommandPath})`;
+  if (shell.readySource === "managed") {
+    return `managed runtime (${shell.managedCommandPath})`;
+  }
+  if (shell.readySource === "override" && shell.readyCommandPath) {
+    return `configured override (${shell.readyCommandPath})`;
   }
   return "not ready";
 }
@@ -33,10 +45,18 @@ function buildAcpxRecoveryNotes(runtime: DwemrRuntimeInspection) {
   }
 
   return [
-    "No OpenClaw ACPX runtime or PATH-based `acpx` executable was detected for DWEMR bootstrap.",
+    "No OpenClaw ACPX runtime was detected for DWEMR bootstrap.",
     "Install or repair ACPX with `openclaw plugins install acpx`, restart the gateway, then rerun `/dwemr doctor --fix`.",
     "If you already have a custom ACPX executable, set `plugins.entries.dwemr.config.acpxPath` to that path.",
   ];
+}
+
+function buildRuntimeRecoveryNotes(runtime: DwemrRuntimeState) {
+  const shell = getShellInspection(runtime);
+  if (shell) {
+    return buildAcpxRecoveryNotes(shell);
+  }
+  return runtime.notes?.length ? runtime.notes : ["The selected runtime backend is not ready. Re-run `/dwemr doctor --fix` or check backend runtime prerequisites."];
 }
 
 function formatActiveProjectCommand(command: string, args = "", projectPath?: string) {
@@ -44,16 +64,56 @@ function formatActiveProjectCommand(command: string, args = "", projectPath?: st
   return projectPath ? `/dwemr ${command}${suffix}` : `/dwemr ${command} <path>${suffix}`;
 }
 
+function appendRuntimeSection(lines: string[], runtime: DwemrRuntimeState) {
+  lines.push(`- Runtime backend: ${runtime.backendKind}`);
+  lines.push(`- Runtime ready: ${runtime.ready ? "yes" : "no"}`);
+
+  if (runtime.acp) {
+    lines.push(`- ACP flow seam (tasks.flows): ${runtime.acp.flowViewsAvailable ? "available" : "missing"}`);
+    lines.push(`- ACP taskFlow seam (compat): ${runtime.acp.taskFlowLegacyAvailable ? "available" : "missing"}`);
+  }
+
+  if (runtime.notes?.length) {
+    lines.push(...runtime.notes.map((note) => `- Runtime note: ${note}`));
+  }
+
+  const shell = getShellInspection(runtime);
+  if (!shell) {
+    return;
+  }
+
+  lines.push("- Legacy ACPX compatibility diagnostics:");
+  lines.push(`- Managed runtime: ${shell.managedReady ? `ready (${shell.managedCommandPath})` : "not ready"}`);
+  lines.push(`- Configured acpxPath: ${shell.overrideCommandPath ? shell.overrideReady ? `ready (${shell.overrideCommandPath})` : `configured but not executable (${shell.overrideCommandPath})` : "not configured"}`);
+}
+
+function buildRuntimeLedgerNotes(activeRun: Awaited<ReturnType<DwemrRuntimeBackend["findActiveRun"]>> | undefined, pipelineMilestoneKind?: string) {
+  if (!activeRun) {
+    if (pipelineMilestoneKind === "user_input_required") {
+      return ["No active runtime owner is expected right now; workflow is waiting on user input from saved DWEMR state."];
+    }
+    return ["No active runtime owner is currently registered for this project."];
+  }
+
+  const notes = [
+    `Active runtime owner: ${activeRun.identity.backendKind} run ${activeRun.identity.runId}`,
+  ];
+  if (activeRun.identity.flowId && !activeRun.identity.taskId) {
+    notes.push("Active run has a flow id but no task id; this can happen on degraded compatibility seams.");
+  }
+  if (activeRun.identity.backendKind === "acp-native" && !activeRun.identity.childSessionKey) {
+    notes.push("Active ACP-native run is missing child session identity; stop/cancel reliability may be degraded.");
+  }
+  if (activeRun.identity.backendKind === "spawn" && !activeRun.pid) {
+    notes.push("Active spawn run is missing PID metadata; signal-based stop may fail.");
+  }
+  return notes;
+}
+
 export function formatDoctorText(report: DwemrDoctorReport, pluginConfig: DwemrPluginConfig, defaultProjectPath: string | undefined) {
   const lines = ["DWEMR doctor", "", "Runtime:"];
 
-  lines.push(`- Managed runtime dir: ${report.runtime.managedRuntimeDir}`);
-  lines.push(`- Managed runtime: ${report.runtime.managedReady ? `ready (${report.runtime.managedCommandPath})` : "not ready"}`);
-  lines.push(`- Configured acpxPath: ${report.runtime.overrideCommandPath ? report.runtime.overrideReady ? `ready (${report.runtime.overrideCommandPath})` : `configured but not executable (${report.runtime.overrideCommandPath})` : "not configured"}`);
-  lines.push(`- OpenClaw package root: ${report.runtime.openclawPackageRoot ?? "not detected"}`);
-  lines.push(`- OpenClaw ACPX extension: ${report.runtime.openclawAcpxExtensionDetected ? `detected (${report.runtime.openclawAcpxExtensionPath})` : "not detected"}`);
-  lines.push(`- Bundled ACPX source: ${report.runtime.bootstrapSourceKind === "bundled" && report.runtime.bootstrapSourcePath ? report.runtime.bootstrapSourcePath : "not detected"}`);
-  lines.push(`- PATH fallback source: ${report.runtime.pathFallbackCommandPath ?? "not detected"}`);
+  appendRuntimeSection(lines, report.runtime);
   lines.push(`- Execution runtime: ${formatRuntimeSource(report.runtime)}`);
   lines.push(`- Claude model override: ${pluginConfig.model?.trim() ? pluginConfig.model : "not configured"}`);
   lines.push(`- Claude subagent model: ${pluginConfig.subagentModel?.trim() ? pluginConfig.subagentModel : "not configured"}`);
@@ -98,21 +158,30 @@ export function formatDoctorText(report: DwemrDoctorReport, pluginConfig: DwemrP
     lines.push(...report.fixNotes.map((note) => `- ${note}`));
   }
 
+  if (report.runtimeLedgerNotes.length > 0) {
+    lines.push("", "Runtime ledger:");
+    lines.push(...report.runtimeLedgerNotes.map((note) => `- ${note}`));
+  }
+
   lines.push("", "Next:");
   const activeProjectReady = report.project?.exists ? report.project.targetPath : defaultProjectPath;
   if (report.fixApplied) {
     if (report.project?.installState === "unsupported_contract") {
       lines.push(`- Run \`/dwemr init ${report.project.targetPath} --overwrite --confirm-overwrite\` to destroy the existing target folder contents and reinstall the current DWEMR contract from scratch.`);
-    } else if (!report.runtime.readyCommandPath) {
-      lines.push(...buildAcpxRecoveryNotes(report.runtime).map((note) => `- ${note}`));
+    } else if (!report.runtimeReady) {
+      lines.push(...buildRuntimeRecoveryNotes(report.runtime).map((note) => `- ${note}`));
     } else if (report.project?.targetPath) {
       lines.push(`- Retry the original command, for example: ${formatActiveProjectCommand("status", "", activeProjectReady)}`);
     } else {
       lines.push("- Retry your DWEMR command.");
     }
   } else {
-    if (!report.runtime.readyCommandPath) {
-      lines.push(`- Run \`${formatActiveProjectCommand("doctor", "--fix", activeProjectReady)}\` to bootstrap the managed ACPX runtime.`);
+    if (!report.runtimeReady) {
+      if (getShellInspection(report.runtime)) {
+        lines.push(`- Run \`${formatActiveProjectCommand("doctor", "--fix", activeProjectReady)}\` to bootstrap the managed ACPX runtime.`);
+      } else {
+        lines.push(...buildRuntimeRecoveryNotes(report.runtime).map((note) => `- ${note}`));
+      }
     }
     if (report.project?.installState === "missing") {
       lines.push(`- Run \`/dwemr init ${report.project.targetPath}\` to install the DWEMR bootstrap assets.`);
@@ -136,17 +205,26 @@ export function formatDoctorText(report: DwemrDoctorReport, pluginConfig: DwemrP
   return lines.join("\n");
 }
 
-export async function runDwemrDoctor(pluginConfig: DwemrPluginConfig, targetPath: string | undefined, applyFix: boolean): Promise<DwemrDoctorReport> {
-  let runtime = await inspectDwemrRuntime(pluginConfig);
+export async function runDwemrDoctor(
+  pluginConfig: DwemrPluginConfig,
+  targetPath: string | undefined,
+  applyFix: boolean,
+  runtimeBackend: DwemrRuntimeBackend = getDefaultRuntimeBackend({ runtimeConfig: pluginConfig }),
+  options: {
+    stateDir?: string;
+  } = {},
+): Promise<DwemrDoctorReport> {
+  let runtime = await runtimeBackend.inspectRuntime(pluginConfig);
   const fixNotes: string[] = [];
+  const runtimeReady = () => runtime.ready;
 
-  if (applyFix && !runtime.readyCommandPath) {
+  if (applyFix && !runtimeReady()) {
     const previousRuntime = runtime;
-    runtime = await ensureManagedDwemrRuntime(pluginConfig);
-    if (runtime.managedReady && !previousRuntime.managedReady) {
-      fixNotes.push(`Bootstrapped the managed ACPX runtime at ${runtime.managedCommandPath}.`);
-    } else if (!runtime.readyCommandPath) {
-      fixNotes.push("Could not bootstrap the managed ACPX runtime automatically.");
+    runtime = await runtimeBackend.ensureRuntime(pluginConfig);
+    if (!previousRuntime.ready && runtime.ready) {
+      fixNotes.push("Bootstrapped the DWEMR runtime backend.");
+    } else if (!runtimeReady()) {
+      fixNotes.push("Could not bootstrap the DWEMR runtime backend automatically.");
     }
   }
 
@@ -180,24 +258,36 @@ export async function runDwemrDoctor(pluginConfig: DwemrPluginConfig, targetPath
     }
   }
 
+  let runtimeLedgerNotes: string[] = [];
+  if (targetPath && options.stateDir) {
+    const [activeRun, brief] = await Promise.all([
+      runtimeBackend.findActiveRun(options.stateDir, targetPath),
+      readPipelineStateBrief(targetPath),
+    ]);
+    runtimeLedgerNotes = buildRuntimeLedgerNotes(activeRun, brief?.milestoneKind);
+  }
+
   let claudeProbe: ClaudeRuntimeProbe = { status: "skipped", detail: "Skipped because no execution runtime is ready yet." };
-  if (runtime.readyCommandPath && project) {
-    claudeProbe = await probeClaudeRuntime(runtime.readyCommandPath, project.targetPath, project, pluginConfig);
-  } else if (runtime.readyCommandPath && !targetPath) {
+  if (runtimeReady() && project) {
+    claudeProbe = await runtimeBackend.probeClaudeRuntime({
+      targetPath: project.targetPath,
+      project,
+      runtimeConfig: pluginConfig,
+      runtimeState: runtime,
+    });
+  } else if (runtimeReady() && !targetPath) {
     claudeProbe = { status: "skipped", detail: "Skipped because no target project path was provided." };
   }
 
-  if (!runtime.readyCommandPath) {
-    if (runtime.bootstrapSourcePath) {
-      fixNotes.push(`A bootstrap source is available at ${runtime.bootstrapSourcePath}.`);
-    } else {
-      fixNotes.push(...buildAcpxRecoveryNotes(runtime));
-    }
+  if (!runtimeReady()) {
+    fixNotes.push(...buildRuntimeRecoveryNotes(runtime));
   }
 
   return {
     runtime,
+    runtimeReady: runtimeReady(),
     project,
+    runtimeLedgerNotes,
     fixApplied: applyFix,
     fixNotes,
     claudeProbe,
@@ -212,21 +302,24 @@ export async function preflightExecution(
   options: {
     allowBootstrap?: boolean;
   } = {},
+  runtimeBackend: DwemrRuntimeBackend = getDefaultRuntimeBackend({ runtimeConfig: pluginConfig }),
 ) {
-  const runtime = await inspectDwemrRuntime(pluginConfig);
+  const runtime = await runtimeBackend.inspectRuntime(pluginConfig);
   const project = await inspectProjectHealth(targetPath);
   if (
-    runtime.readyCommandPath &&
+    runtime.ready &&
     project.exists &&
     project.installState !== "unsupported_contract" &&
     (project.installState === "profile_installed" || (options.allowBootstrap && project.installState === "bootstrap_only"))
   ) {
-    return { commandPath: runtime.readyCommandPath };
+    return { runtime };
   }
 
   const report: DwemrDoctorReport = {
     runtime,
+    runtimeReady: runtime.ready,
     project,
+    runtimeLedgerNotes: [],
     fixApplied: false,
     fixNotes: [],
     claudeProbe: {

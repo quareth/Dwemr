@@ -6,14 +6,25 @@ const ACTIVE_RUNS_RELATIVE_PATH = path.join("tools", "dwemr", "active-runs.json"
 const STOP_GRACE_PERIOD_MS = 3_000;
 const STOP_POLL_INTERVAL_MS = 200;
 
+export type DwemrRunIdentity = {
+  backendKind: string;
+  runId: string;
+  flowId?: string;
+  taskId?: string;
+  childSessionKey?: string;
+  ownerSessionKey?: string;
+  pid?: number;
+};
+
 export type DwemrActiveRun = {
   projectPath: string;
-  pid: number;
   startedAt: string;
   action: string;
-  claudeCommand: string;
-  sessionName: string;
   executionMode?: DwemrExecutionMode;
+  identity: DwemrRunIdentity;
+  pid?: number;
+  claudeCommand?: string;
+  sessionName?: string;
 };
 
 export type StopActiveRunResult =
@@ -22,15 +33,63 @@ export type StopActiveRunResult =
   | { status: "stopped"; run: DwemrActiveRun; signal: "SIGTERM" | "SIGKILL" }
   | { status: "failed"; run: DwemrActiveRun; error: string };
 
+type LoadActiveRunsOptions = {
+  pruneStale?: boolean;
+  backendKind?: string;
+};
+
 function resolveProjectPath(projectPath: string) {
   return path.resolve(projectPath);
 }
 
-function normalizeActiveRun(raw: Partial<DwemrActiveRun>): DwemrActiveRun | undefined {
-  if (typeof raw.projectPath !== "string" || raw.projectPath.trim().length === 0) {
+function normalizeRunIdentity(raw: unknown): DwemrRunIdentity | undefined {
+  if (typeof raw !== "object" || raw === null) {
     return;
   }
-  if (typeof raw.pid !== "number" || !Number.isInteger(raw.pid) || raw.pid <= 0) {
+
+  const candidate = raw as Partial<DwemrRunIdentity>;
+  if (typeof candidate.backendKind !== "string" || candidate.backendKind.trim().length === 0) {
+    return;
+  }
+  if (typeof candidate.runId !== "string" || candidate.runId.trim().length === 0) {
+    return;
+  }
+
+  return {
+    backendKind: candidate.backendKind.trim(),
+    runId: candidate.runId.trim(),
+    flowId: typeof candidate.flowId === "string" && candidate.flowId.trim().length > 0 ? candidate.flowId.trim() : undefined,
+    taskId: typeof candidate.taskId === "string" && candidate.taskId.trim().length > 0 ? candidate.taskId.trim() : undefined,
+    childSessionKey: typeof candidate.childSessionKey === "string" && candidate.childSessionKey.trim().length > 0 ? candidate.childSessionKey.trim() : undefined,
+    ownerSessionKey: typeof candidate.ownerSessionKey === "string" && candidate.ownerSessionKey.trim().length > 0 ? candidate.ownerSessionKey.trim() : undefined,
+    pid: typeof candidate.pid === "number" && Number.isInteger(candidate.pid) && candidate.pid > 0 ? candidate.pid : undefined,
+  };
+}
+
+function parseOptionalPid(raw: unknown) {
+  if (typeof raw !== "number" || !Number.isInteger(raw) || raw <= 0) {
+    return undefined;
+  }
+  return raw;
+}
+
+function buildLegacySpawnIdentity(raw: {
+  projectPath: string;
+  pid: number;
+  startedAt: string;
+  sessionName: string;
+}) {
+  const projectPath = resolveProjectPath(raw.projectPath);
+  return {
+    backendKind: "spawn",
+    runId: `spawn:${projectPath}:${raw.pid}:${raw.startedAt}`,
+    childSessionKey: raw.sessionName,
+    pid: raw.pid,
+  } satisfies DwemrRunIdentity;
+}
+
+function normalizeActiveRun(raw: Partial<DwemrActiveRun>): DwemrActiveRun | undefined {
+  if (typeof raw.projectPath !== "string" || raw.projectPath.trim().length === 0) {
     return;
   }
   if (typeof raw.startedAt !== "string" || raw.startedAt.trim().length === 0) {
@@ -39,21 +98,48 @@ function normalizeActiveRun(raw: Partial<DwemrActiveRun>): DwemrActiveRun | unde
   if (typeof raw.action !== "string" || raw.action.trim().length === 0) {
     return;
   }
-  if (typeof raw.claudeCommand !== "string" || raw.claudeCommand.trim().length === 0) {
+
+  const parsedPid = parseOptionalPid(raw.pid);
+  const normalizedIdentity =
+    normalizeRunIdentity(raw.identity) ??
+    (
+      parsedPid &&
+      typeof raw.sessionName === "string" &&
+      raw.sessionName.trim().length > 0 &&
+      typeof raw.claudeCommand === "string" &&
+      raw.claudeCommand.trim().length > 0
+        ? buildLegacySpawnIdentity({
+            projectPath: raw.projectPath,
+            pid: parsedPid,
+            startedAt: raw.startedAt,
+            sessionName: raw.sessionName,
+          })
+        : undefined
+    );
+
+  if (!normalizedIdentity) {
     return;
   }
-  if (typeof raw.sessionName !== "string" || raw.sessionName.trim().length === 0) {
+
+  const effectivePid = parsedPid ?? normalizedIdentity.pid;
+  const identityWithPid =
+    effectivePid && !normalizedIdentity.pid
+      ? { ...normalizedIdentity, pid: effectivePid }
+      : normalizedIdentity;
+
+  if (identityWithPid.backendKind === "spawn" && !effectivePid) {
     return;
   }
 
   return {
     projectPath: resolveProjectPath(raw.projectPath),
-    pid: raw.pid,
     startedAt: raw.startedAt,
     action: raw.action.trim(),
-    claudeCommand: raw.claudeCommand.trim(),
-    sessionName: raw.sessionName.trim(),
     executionMode: raw.executionMode === "autonomous" || raw.executionMode === "checkpointed" ? raw.executionMode : undefined,
+    identity: identityWithPid,
+    pid: effectivePid,
+    claudeCommand: typeof raw.claudeCommand === "string" && raw.claudeCommand.trim().length > 0 ? raw.claudeCommand.trim() : undefined,
+    sessionName: typeof raw.sessionName === "string" && raw.sessionName.trim().length > 0 ? raw.sessionName.trim() : undefined,
   } satisfies DwemrActiveRun;
 }
 
@@ -100,26 +186,34 @@ async function writeActiveRuns(stateDir: string, runs: DwemrActiveRun[]) {
   await writeFile(targetPath, `${JSON.stringify({ runs }, null, 2)}\n`, "utf8");
 }
 
+function isActiveSpawnRun(run: DwemrActiveRun) {
+  if (run.identity.backendKind !== "spawn") {
+    return true;
+  }
+  const pid = run.pid ?? run.identity.pid;
+  return typeof pid === "number" && isProcessRunning(pid);
+}
+
 export function resolveActiveRunsPath(stateDir: string) {
   return path.join(stateDir, ACTIVE_RUNS_RELATIVE_PATH);
 }
 
-export async function loadActiveRuns(stateDir: string, options: { pruneStale?: boolean } = {}) {
+export async function loadActiveRuns(stateDir: string, options: LoadActiveRunsOptions = {}) {
   const normalized = (await readActiveRunsRaw(stateDir))
     .map((run) => normalizeActiveRun(run))
     .filter((run): run is DwemrActiveRun => Boolean(run));
 
   const pruneStale = options.pruneStale ?? true;
-  if (!pruneStale) {
-    return normalized;
+  const baseRuns = pruneStale ? normalized.filter(isActiveSpawnRun) : normalized;
+  if (pruneStale && baseRuns.length !== normalized.length) {
+    await writeActiveRuns(stateDir, baseRuns);
   }
 
-  const liveRuns = normalized.filter((run) => isProcessRunning(run.pid));
-  if (liveRuns.length !== normalized.length) {
-    await writeActiveRuns(stateDir, liveRuns);
+  if (!options.backendKind) {
+    return baseRuns;
   }
 
-  return liveRuns;
+  return baseRuns.filter((run) => run.identity.backendKind === options.backendKind);
 }
 
 export async function registerActiveRun(stateDir: string, run: DwemrActiveRun) {
@@ -130,22 +224,38 @@ export async function registerActiveRun(stateDir: string, run: DwemrActiveRun) {
 
   const existing = await loadActiveRuns(stateDir);
   const next = [
-    ...existing.filter((entry) => entry.projectPath !== normalized.projectPath && entry.pid !== normalized.pid),
+    ...existing.filter((entry) => entry.projectPath !== normalized.projectPath && entry.identity.runId !== normalized.identity.runId),
     normalized,
   ].sort((left, right) => right.startedAt.localeCompare(left.startedAt));
 
   await writeActiveRuns(stateDir, next);
 }
 
-export async function clearActiveRun(stateDir: string, projectPath: string, options: { pid?: number } = {}) {
+export async function clearActiveRun(
+  stateDir: string,
+  projectPath: string,
+  options: { pid?: number; runId?: string; backendKind?: string } = {},
+) {
   const normalizedProjectPath = resolveProjectPath(projectPath);
   const existing = await loadActiveRuns(stateDir, { pruneStale: false });
   const next = existing.filter((entry) => {
     if (entry.projectPath !== normalizedProjectPath) {
       return true;
     }
-    if (options.pid !== undefined && entry.pid !== options.pid) {
+    if (options.backendKind && entry.identity.backendKind !== options.backendKind) {
       return true;
+    }
+    if (options.runId && entry.identity.runId !== options.runId) {
+      return true;
+    }
+    if (options.pid !== undefined) {
+      const entryPid = entry.pid ?? entry.identity.pid;
+      if (entryPid !== options.pid) {
+        return true;
+      }
+    }
+    if (options.pid === undefined && !options.runId && !options.backendKind) {
+      return false;
     }
     return false;
   });
@@ -153,30 +263,40 @@ export async function clearActiveRun(stateDir: string, projectPath: string, opti
   await writeActiveRuns(stateDir, next);
 }
 
-export async function findActiveRun(stateDir: string, projectPath: string) {
+export async function findActiveRun(stateDir: string, projectPath: string, options: { backendKind?: string } = {}) {
   const normalizedProjectPath = resolveProjectPath(projectPath);
-  const runs = await loadActiveRuns(stateDir);
+  const runs = await loadActiveRuns(stateDir, { backendKind: options.backendKind });
   return runs.find((run) => run.projectPath === normalizedProjectPath);
 }
 
 export async function stopActiveRun(stateDir: string, projectPath: string): Promise<StopActiveRunResult> {
   const normalizedProjectPath = resolveProjectPath(projectPath);
-  const run = await findActiveRun(stateDir, normalizedProjectPath);
+  const run = await findActiveRun(stateDir, normalizedProjectPath, { backendKind: "spawn" });
   if (!run) {
     return { status: "not_found", projectPath: normalizedProjectPath };
   }
 
-  if (!isProcessRunning(run.pid)) {
-    await clearActiveRun(stateDir, normalizedProjectPath, { pid: run.pid });
+  const pid = run.pid ?? run.identity.pid;
+  if (!pid) {
+    await clearActiveRun(stateDir, normalizedProjectPath, { runId: run.identity.runId, backendKind: "spawn" });
+    return {
+      status: "failed",
+      run,
+      error: "Spawn run record does not include a PID and cannot be stopped with process signals.",
+    };
+  }
+
+  if (!isProcessRunning(pid)) {
+    await clearActiveRun(stateDir, normalizedProjectPath, { pid, runId: run.identity.runId, backendKind: "spawn" });
     return { status: "already_exited", run };
   }
 
   try {
-    process.kill(run.pid, "SIGTERM");
+    process.kill(pid, "SIGTERM");
   } catch (error) {
     const execError = error as NodeJS.ErrnoException;
     if (execError.code === "ESRCH") {
-      await clearActiveRun(stateDir, normalizedProjectPath, { pid: run.pid });
+      await clearActiveRun(stateDir, normalizedProjectPath, { pid, runId: run.identity.runId, backendKind: "spawn" });
       return { status: "already_exited", run };
     }
 
@@ -187,17 +307,17 @@ export async function stopActiveRun(stateDir: string, projectPath: string): Prom
     };
   }
 
-  if (await waitForProcessExit(run.pid, STOP_GRACE_PERIOD_MS)) {
-    await clearActiveRun(stateDir, normalizedProjectPath, { pid: run.pid });
+  if (await waitForProcessExit(pid, STOP_GRACE_PERIOD_MS)) {
+    await clearActiveRun(stateDir, normalizedProjectPath, { pid, runId: run.identity.runId, backendKind: "spawn" });
     return { status: "stopped", run, signal: "SIGTERM" };
   }
 
   try {
-    process.kill(run.pid, "SIGKILL");
+    process.kill(pid, "SIGKILL");
   } catch (error) {
     const execError = error as NodeJS.ErrnoException;
     if (execError.code === "ESRCH") {
-      await clearActiveRun(stateDir, normalizedProjectPath, { pid: run.pid });
+      await clearActiveRun(stateDir, normalizedProjectPath, { pid, runId: run.identity.runId, backendKind: "spawn" });
       return { status: "stopped", run, signal: "SIGTERM" };
     }
 
@@ -208,14 +328,14 @@ export async function stopActiveRun(stateDir: string, projectPath: string): Prom
     };
   }
 
-  if (await waitForProcessExit(run.pid, STOP_GRACE_PERIOD_MS)) {
-    await clearActiveRun(stateDir, normalizedProjectPath, { pid: run.pid });
+  if (await waitForProcessExit(pid, STOP_GRACE_PERIOD_MS)) {
+    await clearActiveRun(stateDir, normalizedProjectPath, { pid, runId: run.identity.runId, backendKind: "spawn" });
     return { status: "stopped", run, signal: "SIGKILL" };
   }
 
   return {
     status: "failed",
     run,
-    error: `Process ${run.pid} did not exit after SIGTERM and SIGKILL.`,
+    error: `Process ${pid} did not exit after SIGTERM and SIGKILL.`,
   };
 }

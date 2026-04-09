@@ -13,6 +13,9 @@ const MANAGED_RUNTIME_METADATA_NAME = "runtime.json";
 export type DwemrRuntimeConfig = {
   acpxPath?: string;
   managedRuntimeDir?: string;
+  runtimeBackend?: string;
+  acpAgent?: string;
+  acpBackend?: string;
 };
 
 type DwemrBootstrapSourceKind = "bundled" | "legacy-path";
@@ -40,7 +43,6 @@ export type DwemrRuntimeInspection = {
   readySource?: DwemrReadySourceKind;
   bootstrapSourcePath?: string;
   bootstrapSourceKind?: DwemrBootstrapSourceKind;
-  pathFallbackCommandPath?: string;
 };
 
 function resolveStateDir() {
@@ -165,10 +167,6 @@ async function discoverBundledAcpxSource(openclawRoot: string | undefined) {
   }
 }
 
-async function discoverPathAcpxSource() {
-  return discoverPathCommand(ACPX_BIN_NAME);
-}
-
 function buildUnixWrapperScript(targetPath: string) {
   const escapedTarget = targetPath.replaceAll("\\", "\\\\").replaceAll("\"", "\\\"");
   return `#!/bin/sh\nexec "${escapedTarget}" "$@"\n`;
@@ -216,15 +214,8 @@ export async function inspectDwemrRuntime(config: DwemrRuntimeConfig): Promise<D
   const metadataSourceReady = metadata ? await isExecutable(metadata.sourcePath) : false;
   const managedReady = managedWrapperReady && (!metadata || metadataSourceReady);
   const bundledSourcePath = await discoverBundledAcpxSource(openclawPackageRoot);
-  const pathFallbackCommandPath = await discoverPathAcpxSource();
-
   let bootstrapSourcePath: string | undefined = bundledSourcePath;
   let bootstrapSourceKind: DwemrBootstrapSourceKind | undefined = bundledSourcePath ? "bundled" : undefined;
-
-  if (!bootstrapSourcePath && pathFallbackCommandPath) {
-    bootstrapSourcePath = pathFallbackCommandPath;
-    bootstrapSourceKind = "legacy-path";
-  }
 
   const readyCommandPath = managedReady ? managedCommandPath : overrideReady ? overrideCommandPath : undefined;
   const readySource = managedReady ? "managed" : overrideReady ? "override" : undefined;
@@ -244,7 +235,6 @@ export async function inspectDwemrRuntime(config: DwemrRuntimeConfig): Promise<D
     readySource,
     bootstrapSourcePath,
     bootstrapSourceKind,
-    pathFallbackCommandPath,
   };
 }
 

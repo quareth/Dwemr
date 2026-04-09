@@ -1,10 +1,13 @@
 import type { DwemrPluginConfig } from "./project-selection";
+import type { DwemrRuntimeBackend, DwemrRuntimeContext } from "./runtime-backend";
 
 export type HandlerContext = {
   pluginConfig: DwemrPluginConfig;
   stateDir: string;
   defaultProjectPath: string | undefined;
   api: unknown;
+  runtimeContext?: DwemrRuntimeContext;
+  runtimeBackend?: DwemrRuntimeBackend;
 };
 
 export type HandlerResult = {

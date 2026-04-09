@@ -42,23 +42,23 @@
     "typecheck": "tsc --noEmit"
   },
   "peerDependencies": {
-    "openclaw": ">=2026.3.24-beta.2"
+    "openclaw": ">=2026.4.2"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
-    "openclaw": "^2026.3.24-beta.2",
+    "openclaw": "^2026.4.2",
     "tsx": "^4.21.0",
     "typescript": "^5.7.0"
   },
   "openclaw": {
     "extensions": ["./index.ts"],
     "compat": {
-      "pluginApi": ">=2026.3.24-beta.2",
-      "minGatewayVersion": "2026.3.24-beta.2"
+      "pluginApi": ">=2026.4.2",
+      "minGatewayVersion": "2026.4.2"
     },
     "build": {
-      "openclawVersion": "2026.3.24-beta.2",
-      "pluginSdkVersion": "2026.3.24-beta.2"
+      "openclawVersion": "2026.4.2",
+      "pluginSdkVersion": "2026.4.2"
     }
   }
 }

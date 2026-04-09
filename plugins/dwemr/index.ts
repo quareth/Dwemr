@@ -1,5 +1,5 @@
 import path from "node:path";
-import { definePluginEntry, type OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-entry";
+import { definePluginEntry, type OpenClawPluginApi, type OpenClawPluginToolContext } from "openclaw/plugin-sdk/plugin-entry";
 import { tokenizeRawArgs } from "./src/openclaw/command-routing";
 import { textResult, type HandlerContext } from "./src/openclaw/action-handler-types";
 import {
@@ -30,13 +30,23 @@ type InitToolParams = {
   confirmOverwrite?: boolean;
 };
 
+function toRuntimeToolContext(toolContext: OpenClawPluginToolContext | undefined) {
+  if (!toolContext) {
+    return undefined;
+  }
+  return {
+    sessionKey: toolContext.sessionKey,
+    deliveryContext: toolContext.deliveryContext,
+  };
+}
+
 export default definePluginEntry({
   id: "dwemr",
   name: "Delivery Workflow Engine & Memory Relay (DWEMR)",
   description:
     "DWEMR is an OpenClaw-to-Claude delivery bridge that initializes projects, routes `/dwemr` actions, and lets Claude Code own the internal workflow.",
   register(api: OpenClawPluginApi) {
-    api.registerTool({
+    api.registerTool((toolContext) => ({
       name: "dwemr_command",
       label: "DWEMR Command",
       description: "Deterministic /dwemr command dispatcher.",
@@ -54,7 +64,16 @@ export default definePluginEntry({
         const stateDir = api.runtime.state.resolveStateDir();
         const defaultProjectPath = await getDefaultProjectPath(api);
         const tokens = tokenizeRawArgs(params.command ?? "");
-        const ctx: HandlerContext = { pluginConfig, stateDir, defaultProjectPath, api };
+        const ctx: HandlerContext = {
+          pluginConfig,
+          stateDir,
+          defaultProjectPath,
+          api,
+          runtimeContext: {
+            api,
+            toolContext: toRuntimeToolContext(toolContext),
+          },
+        };
 
         if (tokens.length === 0) return handleEmptyCommand(ctx);
 
@@ -71,9 +90,9 @@ export default definePluginEntry({
 
         return handleGenericRouted(ctx, tokens);
       },
-    });
+    }));
 
-    api.registerTool({
+    api.registerTool((_toolContext) => ({
       name: "dwemr_init",
       label: "DWEMR Init",
       description: "Initialize a target project with the DWEMR Claude-native bootstrap assets from this package.",
@@ -112,6 +131,6 @@ export default definePluginEntry({
 
         return textResult(`${summary}\n\nRemembered ${targetPath} as the active DWEMR project.`);
       },
-    });
+    }));
   },
 });

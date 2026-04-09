@@ -9,7 +9,7 @@ FOLLOW_HANDOFFS=false
 RETURN_TO_PARENT=false
 MAIN_AGENT_MUST_NOT_INLINE=true
 ALLOW_WORKER_FALLBACK=false
-STOP_ON=onboarding_complete|awaiting_clarification|blocked_waiting_human|explicit_block
+STOP_ON=onboarding_complete|blocked_waiting_human|explicit_block
 END DISPATCH CONTRACT
 
 Procedure selection:

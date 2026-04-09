@@ -5,17 +5,23 @@
   "version": "0.1.0",
   "skills": ["skills"],
   "uiHints": {
-    "acpxPath": {
-      "label": "ACPX override path",
-      "help": "Advanced override for a custom acpx executable. Leave blank for the managed DWEMR runtime.",
+    "runtimeBackend": {
+      "label": "Runtime backend",
+      "help": "Optional runtime backend override. Use acp-native by default; spawn is legacy compatibility.",
       "advanced": true,
-      "placeholder": "/absolute/path/to/acpx"
+      "placeholder": "acp-native"
     },
-    "managedRuntimeDir": {
-      "label": "Managed runtime directory",
-      "help": "Advanced override for where DWEMR stores its managed ACPX wrapper.",
+    "acpAgent": {
+      "label": "ACP agent id",
+      "help": "Optional ACP agent id override for acp-native runs.",
       "advanced": true,
-      "placeholder": "/absolute/path/to/openclaw-state/tools/dwemr/runtime"
+      "placeholder": "claude"
+    },
+    "acpBackend": {
+      "label": "ACP backend id",
+      "help": "Optional ACP backend id override for acp-native runs.",
+      "advanced": true,
+      "placeholder": "acpx"
     },
     "activeProjectPath": {
       "label": "Active project path",
@@ -51,6 +57,16 @@
     "additionalProperties": false,
     "properties": {
       "acpxPath": {
+        "type": "string"
+      },
+      "runtimeBackend": {
+        "type": "string",
+        "enum": ["acp-native", "spawn"]
+      },
+      "acpAgent": {
+        "type": "string"
+      },
+      "acpBackend": {
         "type": "string"
       },
       "managedRuntimeDir": {
