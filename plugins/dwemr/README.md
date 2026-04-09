@@ -434,14 +434,6 @@ These remain internal implementation surfaces and are not the recommended public
 - plugin id `dwemr`
 - tool `dwemr_init`
 
-## Migration notes
-
-- `templates/` remains the active Claude-native workflow source.
-- The former `templates/cursor/` bundle has been removed after migration to Claude-native assets.
-- DWEMR-owned mutable project data now lives under `.dwemr/` instead of `.claude/dwemr/`.
-- This runtime-tree move is a breaking project-layout change; previously initialized projects should be reinitialized with `/dwemr init <path> --overwrite --confirm-overwrite` when you intentionally want a destructive reset.
-- [docs/claude-migration-matrix.md](./docs/claude-migration-matrix.md) records every migrated Markdown artifact and the intentional deviations from its Cursor source.
-
 ## Plugin layout
 
 - `openclaw.plugin.json` - native OpenClaw manifest
