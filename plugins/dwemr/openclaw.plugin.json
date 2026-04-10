@@ -2,15 +2,9 @@
   "id": "dwemr",
   "name": "Delivery Workflow Engine & Memory Relay (DWEMR)",
   "description": "DWEMR is an OpenClaw-to-Claude delivery bridge that initializes projects, routes `/dwemr` actions, and lets Claude Code own the internal workflow.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "skills": ["skills"],
   "uiHints": {
-    "runtimeBackend": {
-      "label": "Runtime backend",
-      "help": "Optional runtime backend override. Use acp-native by default; spawn is legacy compatibility.",
-      "advanced": true,
-      "placeholder": "acp-native"
-    },
     "acpAgent": {
       "label": "ACP agent id",
       "help": "Optional ACP agent id override for acp-native runs.",
@@ -56,20 +50,10 @@
     "type": "object",
     "additionalProperties": false,
     "properties": {
-      "acpxPath": {
-        "type": "string"
-      },
-      "runtimeBackend": {
-        "type": "string",
-        "enum": ["acp-native", "spawn"]
-      },
       "acpAgent": {
         "type": "string"
       },
       "acpBackend": {
-        "type": "string"
-      },
-      "managedRuntimeDir": {
         "type": "string"
       },
       "activeProjectPath": {

@@ -243,30 +243,15 @@ The public commands dispatch directly to plugin tools with raw command arguments
 `/dwemr what-now` maps to the internal Claude command `/delivery-what-now`, which is guidance-only. It reads authoritative DWEMR state first, uses memory only as optional narrative context, summarizes what happened most recently, and points the user to the safest next public `/dwemr` command. If onboarding is incomplete, DWEMR surfaces the saved onboarding clarification when one exists; otherwise it points the user back to a request-bearing onboarding command.
 
 At runtime DWEMR executes one Claude entrypoint per routed command through the
-selected runtime backend:
-
-- ACP-native backend (`acp-native`): OpenClaw-managed ACP session + turn control
-- legacy backend (`spawn`): direct ACPX command execution (compatibility path)
+ACP-native runtime backend (OpenClaw-managed ACP session + turn control). The
+legacy spawn-based shell execution path was retired in 0.2.0 and ACP-native is
+now the only supported runtime.
 
 DWEMR does not emulate Claude’s internal agents. It maps the requested action to one Claude entrypoint and returns only the final assistant response on success.
 
 ## Runtime behavior
 
 DWEMR keeps `/dwemr` available even before setup is healthy.
-
-DWEMR supports two execution backends:
-
-- `acp-native` (default when available): OpenClaw-managed ACP sessions and turns
-- `spawn` (legacy compatibility): DWEMR-managed ACPX shell execution
-
-When ACP-native prerequisites are missing at runtime, DWEMR can still run through
-the legacy spawn backend.
-
-`acpx` is now primarily a compatibility/runtime-backend detail instead of the
-only execution path.
-
-Spawn compatibility bootstrap is intentionally limited to bundled OpenClaw ACPX
-sources or an explicit `acpxPath` override.
 
 ACP-native run model:
 
@@ -281,22 +266,10 @@ ACP-native runtime seam compatibility:
 | `api.runtime.tasks.flows` | Required | Primary ACP-native runtime orchestration/read seam. |
 | `api.runtime.taskFlow` | Optional compatibility seam | Enables best-effort managed flow/task mutation ledger writes (`flowId`, `taskId`). Missing seam does not block command execution. |
 
-If you explicitly force `runtimeBackend: "spawn"` and `/dwemr doctor --fix`
-reports that no ACPX runtime was found, try:
-
-```bash
-openclaw plugins install acpx
-openclaw gateway restart
-```
-
-Then rerun:
-
-```text
-/dwemr doctor --fix
-```
-
-If you manage ACPX separately for spawn compatibility, set
-`plugins.entries.dwemr.config.acpxPath` to the executable path.
+When ACP-native prerequisites are missing at runtime, `/dwemr doctor` reports
+the missing seams. There is no longer a fallback execution path; `/dwemr help`
+and `/dwemr doctor` remain reachable on broken installs so the user can
+diagnose the missing prerequisites.
 
 DWEMR also remembers multiple project paths in its own state storage while keeping exactly one active project at a time.
 
@@ -417,10 +390,9 @@ Use `/dwemr sessions` to list only the ACP sessions DWEMR currently tracks for D
 
 `/dwemr doctor [path]` reports:
 
-- whether the selected runtime backend is ready
+- whether the ACP-native runtime backend is ready
 - ACP-native seam availability (`tasks.flows` required, `taskFlow` compatibility)
 - whether ACPX host timeout and permission config look healthy for DWEMR's ACP-native automation path
-- legacy ACPX compatibility diagnostics when spawn compatibility is in use
 - whether the target project exists
 - whether the project is missing DWEMR assets, bootstrap-only, or fully profile-installed
 - whether onboarding is pending, waiting on clarification, or complete
@@ -561,7 +533,6 @@ Supported key:
 
 ```json
 {
-  "runtimeBackend": "acp-native",
   "acpAgent": "claude",
   "acpBackend": "acpx",
   "activeProjectPath": "/absolute/path/to/project",
@@ -580,25 +551,11 @@ Supported key:
 }
 ```
 
-`runtimeBackend` optionally forces backend selection. Supported values are:
-
-- `acp-native` (OpenClaw-managed ACP runtime path)
-- `spawn` (legacy ACPX command path)
-
-When `runtimeBackend` is unset, DWEMR auto-selects `acp-native` when runtime
-prerequisites are available and otherwise falls back to `spawn`.
-
 `acpAgent` optionally overrides the ACP harness agent id used by ACP-native runs.
 If unset, DWEMR follows OpenClaw ACP defaults and ultimately falls back to
 `claude`.
 
 `acpBackend` optionally overrides the ACP backend id for ACP-native runs.
-
-`acpxPath` is a deprecated compatibility override for forced `spawn` backend
-usage. ACP-native execution ignores this key.
-
-`managedRuntimeDir` is a deprecated compatibility override for forced `spawn`
-backend usage. ACP-native execution ignores this key.
 
 `model` optionally selects the Claude model for DWEMR runs. Claude Code supports aliases such as `sonnet`, `opus`, `haiku`, and `opusplan`, as well as full model names.
 
@@ -616,13 +573,13 @@ Current DWEMR builds persist remembered projects under the OpenClaw state direct
 
 Runtime option notes:
 
-- `model` is mapped in both `acp-native` and `spawn` backends.
-- `cwd` is mapped in both `acp-native` and `spawn` backends.
-- DWEMR does not currently push `timeoutSeconds` through ACP-native session runtime options.
-  Configure longer ACPX turn limits at the host level instead, for example:
+- `model` and `cwd` are mapped through to ACP-native session runtime options.
+- DWEMR does not currently push `timeoutSeconds` through ACP-native session
+  runtime options. Configure longer ACPX turn limits at the host level
+  instead, for example:
   `openclaw config set plugins.entries.acpx.config.timeoutSeconds 7200`
-- `subagentModel` and `effortLevel` are fully preserved in `spawn`; ACP-native
-  mapping is backend-dependent and currently best-effort with caveats.
+- `subagentModel` and `effortLevel` mapping under ACP-native is
+  backend-dependent and currently best-effort with caveats.
 
 ## Internal implementation surfaces
 

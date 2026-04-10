@@ -7,9 +7,7 @@ import {
   snapshotChildPids,
   type DwemrActiveRun,
 } from "../../state/active-runs";
-import type { DwemrProcessResult } from "../claude-runner";
-import type { DwemrRuntimeConfig } from "../runtime";
-import type { DwemrClaudeModelConfig } from "../claude-runner";
+import type { DwemrClaudeModelConfig, DwemrProcessResult, DwemrRuntimeConfig } from "../runtime-types";
 import type {
   DwemrRunCommandRequest,
   DwemrRuntimeBackend,

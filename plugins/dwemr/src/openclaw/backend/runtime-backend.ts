@@ -1,8 +1,6 @@
-import type { DwemrRuntimeConfig } from "./runtime";
+import type { DwemrRuntimeConfig } from "./runtime-types";
 import type { DwemrRuntimeContext, RuntimeBackendFactory } from "./runtime-backend-types";
-import { ACP_NATIVE_BACKEND_KIND, asRuntimeApi, normalizeOptionalString } from "./acp-native/acp-config";
-import { isAcpRuntimeReady } from "./acp-native/acp-readiness";
-import { createSpawnRuntimeBackend } from "./spawn-backend";
+import { ACP_NATIVE_BACKEND_KIND, normalizeOptionalString } from "./acp-native/acp-config";
 import { createAcpNativeRuntimeBackend } from "./acp-native/acp-native-backend";
 
 export type {
@@ -19,7 +17,6 @@ export { buildAcpRuntimeOptionPatch } from "./acp-native/acp-config";
 
 const runtimeBackendRegistry = new Map<string, RuntimeBackendFactory>();
 
-runtimeBackendRegistry.set("spawn", createSpawnRuntimeBackend);
 runtimeBackendRegistry.set(ACP_NATIVE_BACKEND_KIND, createAcpNativeRuntimeBackend);
 
 let runtimeBackendOverride: string | undefined;
@@ -32,21 +29,18 @@ export function setRuntimeBackendOverride(kind: string | undefined) {
   runtimeBackendOverride = kind?.trim() || undefined;
 }
 
-function shouldAutoUseAcpNative(context?: DwemrRuntimeContext, runtimeConfig: DwemrRuntimeConfig = {}) {
-  const runtimeApi = asRuntimeApi(context?.api);
-  if (!runtimeApi) {
-    return false;
-  }
-  return isAcpRuntimeReady(runtimeApi, runtimeConfig).ready;
-}
-
 export function getDefaultRuntimeBackend(options: { preferredKind?: string; runtimeContext?: DwemrRuntimeContext; runtimeConfig?: DwemrRuntimeConfig } = {}) {
+  // `runtimeConfig` is kept on the signature for backwards-compatible call sites
+  // but no longer participates in backend selection: ACP-native is the only
+  // registered runtime kind. The per-backend factory still receives the runtime
+  // context (and reads its own config from there).
+  void options.runtimeConfig;
   const selectedKind = runtimeBackendOverride
     ?? normalizeOptionalString(options.preferredKind)
-    ?? (shouldAutoUseAcpNative(options.runtimeContext, options.runtimeConfig) ? ACP_NATIVE_BACKEND_KIND : "spawn");
-  const factory = runtimeBackendRegistry.get(selectedKind) ?? runtimeBackendRegistry.get("spawn");
+    ?? ACP_NATIVE_BACKEND_KIND;
+  const factory = runtimeBackendRegistry.get(selectedKind);
   if (!factory) {
-    throw new Error("DWEMR runtime backend registry is empty.");
+    throw new Error(`DWEMR runtime backend "${selectedKind}" is not registered.`);
   }
   return factory(options.runtimeContext);
 }

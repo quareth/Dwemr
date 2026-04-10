@@ -19,11 +19,10 @@ plugins/
 │   │       ├── cli/                # public command surface (handlers, routing, handler types)
 │   │       ├── backend/            # runtime execution + backend registry
 │   │       │   ├── acp-native/     # ACP-native backend internals (one focused file per concern)
-│   │       │   ├── runtime.ts      # ACPX discovery + managed runtime helpers
+│   │       │   ├── runtime-types.ts          # shared runtime/Claude type contracts
+│   │       │   ├── claude-output.ts          # CLI presentation helpers (no execution)
 │   │       │   ├── runtime-backend.ts        # backend registry / default selection
-│   │       │   ├── runtime-backend-types.ts  # backend contract types
-│   │       │   ├── claude-runner.ts          # process result types + legacy stubs
-│   │       │   └── spawn-backend.ts          # legacy spawn adapter (intentional stub)
+│   │       │   └── runtime-backend-types.ts  # backend contract types
 │   │       ├── state/              # JSON persistence: active runs, project memory, plugin config
 │   │       └── diagnostics/        # /dwemr doctor (health checks, repair)
 │   ├── skills/, templates/         # bootstrap assets installed into target projects

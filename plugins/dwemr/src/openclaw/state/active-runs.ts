@@ -1,3 +1,13 @@
+// `node:child_process` is intentionally retained in this module solely for the
+// ACP-native PID-discovery helpers (`snapshotChildPids`, `resolveCwdForPid`).
+// They run `pgrep` / `lsof` on POSIX systems to correlate the spawned Claude
+// child process with the target project cwd, so the ACP-native runtime can
+// register an OS-level PID for stop-tier-3 (`acp-stop.ts attemptOsKill`) and
+// for `active-runs.json` observability. They are NOT spawn-backend code: the
+// retired spawn backend used `child_process` to *run* Claude itself, which has
+// been removed entirely. Do not delete these without first removing the
+// `discoverAcpAgentPid` call sites in `acp-native/acp-session-lifecycle.ts` and
+// `acp-native/acp-native-backend.ts`.
 import { execFile } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -30,12 +40,6 @@ export type DwemrActiveRun = {
   claudeCommand?: string;
   sessionName?: string;
 };
-
-export type StopActiveRunResult =
-  | { status: "not_found"; projectPath: string }
-  | { status: "already_exited"; run: DwemrActiveRun }
-  | { status: "stopped"; run: DwemrActiveRun; signal: "SIGTERM" | "SIGKILL" }
-  | { status: "failed"; run: DwemrActiveRun; error: string };
 
 type LoadActiveRunsOptions = {
   pruneStale?: boolean;
@@ -77,21 +81,6 @@ function parseOptionalPid(raw: unknown) {
   return raw;
 }
 
-function buildLegacySpawnIdentity(raw: {
-  projectPath: string;
-  pid: number;
-  startedAt: string;
-  sessionName: string;
-}) {
-  const projectPath = resolveProjectPath(raw.projectPath);
-  return {
-    backendKind: "spawn",
-    runId: `spawn:${projectPath}:${raw.pid}:${raw.startedAt}`,
-    childSessionKey: raw.sessionName,
-    pid: raw.pid,
-  } satisfies DwemrRunIdentity;
-}
-
 function normalizeActiveRun(raw: Partial<DwemrActiveRun>): DwemrActiveRun | undefined {
   if (typeof raw.projectPath !== "string" || raw.projectPath.trim().length === 0) {
     return;
@@ -104,22 +93,7 @@ function normalizeActiveRun(raw: Partial<DwemrActiveRun>): DwemrActiveRun | unde
   }
 
   const parsedPid = parseOptionalPid(raw.pid);
-  const normalizedIdentity =
-    normalizeRunIdentity(raw.identity) ??
-    (
-      parsedPid &&
-      typeof raw.sessionName === "string" &&
-      raw.sessionName.trim().length > 0 &&
-      typeof raw.claudeCommand === "string" &&
-      raw.claudeCommand.trim().length > 0
-        ? buildLegacySpawnIdentity({
-            projectPath: raw.projectPath,
-            pid: parsedPid,
-            startedAt: raw.startedAt,
-            sessionName: raw.sessionName,
-          })
-        : undefined
-    );
+  const normalizedIdentity = normalizeRunIdentity(raw.identity);
 
   if (!normalizedIdentity) {
     return;
@@ -130,10 +104,6 @@ function normalizeActiveRun(raw: Partial<DwemrActiveRun>): DwemrActiveRun | unde
     effectivePid && !normalizedIdentity.pid
       ? { ...normalizedIdentity, pid: effectivePid }
       : normalizedIdentity;
-
-  if (identityWithPid.backendKind === "spawn" && !effectivePid) {
-    return;
-  }
 
   return {
     projectPath: resolveProjectPath(raw.projectPath),
@@ -372,31 +342,3 @@ export async function updateActiveRunPid(stateDir: string, projectPath: string, 
   await writeActiveRuns(stateDir, existing);
 }
 
-export async function stopActiveRun(stateDir: string, projectPath: string): Promise<StopActiveRunResult> {
-  const normalizedProjectPath = resolveProjectPath(projectPath);
-  const run = await findActiveRun(stateDir, normalizedProjectPath, { backendKind: "spawn" });
-  if (!run) {
-    return { status: "not_found", projectPath: normalizedProjectPath };
-  }
-
-  const pid = run.pid ?? run.identity.pid;
-  if (!pid) {
-    await clearActiveRun(stateDir, normalizedProjectPath, { runId: run.identity.runId, backendKind: "spawn" });
-    return {
-      status: "failed",
-      run,
-      error: "Spawn run record does not include a PID and cannot be stopped with process signals.",
-    };
-  }
-
-  const killResult = await killProcessWithEscalation(pid);
-  if (killResult.status === "already_exited") {
-    await clearActiveRun(stateDir, normalizedProjectPath, { pid, runId: run.identity.runId, backendKind: "spawn" });
-    return { status: "already_exited", run };
-  }
-  if (killResult.status === "killed") {
-    await clearActiveRun(stateDir, normalizedProjectPath, { pid, runId: run.identity.runId, backendKind: "spawn" });
-    return { status: "stopped", run, signal: killResult.signal };
-  }
-  return { status: "failed", run, error: killResult.error };
-}

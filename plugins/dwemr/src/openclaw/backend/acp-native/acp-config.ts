@@ -1,6 +1,5 @@
 import type { AcpRuntimeSummary, DwemrRuntimeContext, RuntimeApiLike } from "../runtime-backend-types";
-import type { DwemrRuntimeConfig } from "../runtime";
-import type { DwemrClaudeModelConfig } from "../claude-runner";
+import type { DwemrClaudeModelConfig, DwemrRuntimeConfig } from "../runtime-types";
 
 export const ACP_NATIVE_BACKEND_KIND = "acp-native";
 export const ACP_DEFAULT_AGENT = "claude";
@@ -87,12 +86,6 @@ export function buildAcpRuntimeSummary(runtimeApi: RuntimeApiLike | undefined, r
 
 export function collectAcpRuntimeOptionCaveatNotes(runtimeConfig: (DwemrRuntimeConfig & DwemrClaudeModelConfig) | undefined) {
   const notes: string[] = [];
-  if (runtimeConfig?.acpxPath?.trim()) {
-    notes.push("`acpxPath` is a legacy spawn compatibility override and is ignored by ACP-native execution.");
-  }
-  if (runtimeConfig?.managedRuntimeDir?.trim()) {
-    notes.push("`managedRuntimeDir` is a legacy spawn compatibility override and is ignored by ACP-native execution.");
-  }
   if (runtimeConfig?.subagentModel?.trim()) {
     notes.push("ACP-native runtime does not guarantee a direct mapping for `subagentModel`; the configured value is currently best-effort.");
   }

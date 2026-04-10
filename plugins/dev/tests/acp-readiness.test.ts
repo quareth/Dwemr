@@ -53,20 +53,16 @@ test("isAcpRuntimeReady reports ready when seams are present and backend is regi
   assert.equal(state.acp?.taskFlowLegacyAvailable, true);
 });
 
-test("isAcpRuntimeReady surfaces caveat notes for legacy spawn-only runtime overrides", () => {
+test("isAcpRuntimeReady surfaces caveat notes for unsupported model overrides", () => {
   resetRuntimeHarness();
   registerFakeAcpBackend();
   const runtimeApi = buildRuntimeApi({ backendId: "test-acp" }) as unknown as RuntimeApiLike;
   const state = isAcpRuntimeReady(runtimeApi, {
-    acpxPath: "/legacy/acpx",
-    managedRuntimeDir: "/legacy/managed",
     subagentModel: "claude-haiku",
     effortLevel: "high",
   });
   assert.equal(state.ready, true);
   const joined = (state.notes ?? []).join("\n");
-  assert.match(joined, /acpxPath.*legacy spawn compatibility override/i);
-  assert.match(joined, /managedRuntimeDir.*legacy spawn compatibility override/i);
   assert.match(joined, /subagentModel/);
   assert.match(joined, /effortLevel/);
 });

@@ -33,26 +33,10 @@ test("ACP-native readiness gates on tasks.flows and backend while taskFlow remai
   const backendWithoutRequiredFlows = getDefaultRuntimeBackend({
     runtimeContext: { api: buildRuntimeApi({ backendId: "test-acp", withFlows: false }) },
   });
-  assert.equal(backendWithoutRequiredFlows.kind, "spawn");
-});
-
-test("ACP-native readiness notes legacy spawn overrides as compatibility-only", async () => {
-  resetRuntimeHarness();
-  registerFakeAcpBackend();
-
-  const backend = getDefaultRuntimeBackend({
-    runtimeContext: { api: buildRuntimeApi({ backendId: "test-acp", withTaskFlow: true, withFlows: true }) },
-  });
-  assert.equal(backend.kind, "acp-native");
-
-  const runtimeState = await backend.inspectRuntime({
-    acpxPath: "/tmp/custom-acpx",
-    managedRuntimeDir: "/tmp/dwemr-managed-runtime",
-  });
-
-  const notes = (runtimeState.notes ?? []).join("\n");
-  assert.match(notes, /`acpxPath`.*ignored by ACP-native execution\./);
-  assert.match(notes, /`managedRuntimeDir`.*ignored by ACP-native execution\./);
+  assert.equal(backendWithoutRequiredFlows.kind, "acp-native");
+  const notReadyState = await backendWithoutRequiredFlows.inspectRuntime({});
+  assert.equal(notReadyState.ready, false);
+  assert.ok((notReadyState.notes ?? []).length > 0, "expected non-ready ACP-native runtime to surface notes");
 });
 
 test("ACP-native command run uses one-shot session, owner session binding, and command-scoped identity", async () => {
@@ -547,15 +531,17 @@ test("ACP-native pre-turn initialization failures do not create flow/task ledger
   }
 });
 
-test("ACP-native auto-selection honors runtime acpBackend override", async () => {
+test("ACP-native is the only registered backend even when prerequisites are missing", async () => {
   resetRuntimeHarness();
   registerFakeAcpBackend("override-backend");
 
   const runtimeApi = buildRuntimeApi({ backendId: "missing-backend" });
-  const fallbackBackend = getDefaultRuntimeBackend({
+  const backendWithMissingPrereqs = getDefaultRuntimeBackend({
     runtimeContext: { api: runtimeApi },
   });
-  assert.equal(fallbackBackend.kind, "spawn");
+  assert.equal(backendWithMissingPrereqs.kind, "acp-native");
+  const notReadyState = await backendWithMissingPrereqs.inspectRuntime({});
+  assert.equal(notReadyState.ready, false);
 
   const overriddenBackend = getDefaultRuntimeBackend({
     runtimeContext: { api: runtimeApi },

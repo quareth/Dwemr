@@ -1,6 +1,5 @@
-import type { DwemrClaudeModelConfig } from "../backend/claude-runner";
+import type { DwemrClaudeModelConfig, DwemrRuntimeConfig } from "../backend/runtime-types";
 import { getActiveProjectPath, listRememberedProjects, loadProjectMemory, rememberProject, saveProjectMemory, type DwemrProjectMemoryConfig } from "./project-memory";
-import type { DwemrRuntimeConfig } from "../backend/runtime";
 
 export type DwemrPluginConfig = DwemrRuntimeConfig & DwemrClaudeModelConfig & DwemrProjectMemoryConfig;
 

@@ -1,6 +1,11 @@
 import type { DwemrActiveRun } from "../state/active-runs";
-import type { ClaudeCommandRunOptions, DwemrClaudeRuntimeProbe, DwemrClaudeModelConfig, DwemrProcessResult } from "./claude-runner";
-import type { DwemrRuntimeConfig, DwemrRuntimeInspection } from "./runtime";
+import type {
+  ClaudeCommandRunOptions,
+  DwemrClaudeModelConfig,
+  DwemrClaudeRuntimeProbe,
+  DwemrProcessResult,
+  DwemrRuntimeConfig,
+} from "./runtime-types";
 import type { ProjectHealth } from "../../control-plane/project-assets";
 
 // Naming convention for backend types in this module and its siblings:
@@ -133,7 +138,6 @@ export type DwemrRuntimeContext = {
 export type DwemrRuntimeState = {
   backendKind: string;
   ready: boolean;
-  shellInspection?: DwemrRuntimeInspection;
   acp?: AcpRuntimeSummary;
   notes?: string[];
 };

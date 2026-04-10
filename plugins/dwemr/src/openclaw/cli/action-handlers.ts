@@ -2,7 +2,7 @@ import path from "node:path";
 import type { HandlerContext, HandlerResult } from "./action-handler-types";
 import { textResult } from "./action-handler-types";
 import { buildInitHelp, buildModeHelp, buildRunnerHelp, buildUseHelp, formatHelpText, mapActionToClaudeCommand } from "./command-routing";
-import { formatRunnerResult, translateClaudeCommandSurface } from "../backend/claude-runner";
+import { formatRunnerResult, translateClaudeCommandSurface } from "../backend/claude-output";
 import { formatDoctorText, preflightExecution, runDwemrDoctor } from "../diagnostics/doctor";
 import { getDefaultRuntimeBackend } from "../backend/runtime-backend";
 import type { DwemrRuntimeBackend, DwemrSessionInfo } from "../backend/runtime-backend-types";
@@ -50,7 +50,6 @@ const ACTIONS_THAT_KEEP_STANDARD_TIMEOUT = new Set(["status", "what-now"]);
 
 function resolveRuntimeBackend(ctx: Pick<HandlerContext, "runtimeBackend" | "pluginConfig" | "api" | "runtimeContext">) {
   return ctx.runtimeBackend ?? getDefaultRuntimeBackend({
-    preferredKind: ctx.pluginConfig.runtimeBackend,
     runtimeContext: ctx.runtimeContext ?? { api: ctx.api },
     runtimeConfig: ctx.pluginConfig,
   });
@@ -113,12 +112,7 @@ function formatRuntimeOwnerDescriptor(run: {
   action: string;
   startedAt: string;
 }) {
-  const parts: string[] = [];
-  if (run.identity.backendKind === "spawn" && run.pid) {
-    parts.push(`spawn runtime PID ${run.pid}`);
-  } else {
-    parts.push(`${run.identity.backendKind} run ${run.identity.runId}`);
-  }
+  const parts: string[] = [`${run.identity.backendKind} run ${run.identity.runId}`];
   if (run.identity.flowId) {
     parts.push(`flow ${run.identity.flowId}`);
   }

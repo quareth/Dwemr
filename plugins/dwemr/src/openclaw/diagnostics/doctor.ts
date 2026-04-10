@@ -1,10 +1,9 @@
 import { hasSavedClarificationBatch } from "../../control-plane/onboarding-state";
 import { inspectProjectHealth, provisionProjectProfile, repairBootstrapAssets, type ProjectHealth } from "../../control-plane/project-assets";
 import { readPipelineStateBrief } from "../../control-plane/pipeline-state";
-import type { DwemrClaudeRuntimeProbe } from "../backend/claude-runner";
+import type { DwemrClaudeRuntimeProbe } from "../backend/runtime-types";
 import type { DwemrPluginConfig } from "../state/project-selection";
 import { DWEMR_CONTRACT_VERSION } from "../../control-plane/state-contract";
-import type { DwemrRuntimeInspection } from "../backend/runtime";
 import { getDefaultRuntimeBackend } from "../backend/runtime-backend";
 import type { DwemrRuntimeBackend, DwemrRuntimeState } from "../backend/runtime-backend-types";
 
@@ -118,46 +117,14 @@ function isAcpRuntimeOptionSetupFailure(detail: string | undefined) {
     || text.includes("runtime options");
 }
 
-function getShellInspection(runtime: DwemrRuntimeState) {
-  return runtime.shellInspection;
-}
-
 export function formatRuntimeSource(runtime: DwemrRuntimeState) {
-  const shell = getShellInspection(runtime);
-  if (!shell) {
-    return `${runtime.backendKind} runtime (${runtime.ready ? "ready" : "not ready"})`;
-  }
-  if (shell.readySource === "managed") {
-    return `managed runtime (${shell.managedCommandPath})`;
-  }
-  if (shell.readySource === "override" && shell.readyCommandPath) {
-    return `configured override (${shell.readyCommandPath})`;
-  }
-  return "not ready";
-}
-
-function buildAcpxRecoveryNotes(runtime: DwemrRuntimeInspection) {
-  if (runtime.openclawAcpxExtensionDetected) {
-    return [
-      "OpenClaw's ACPX runtime plugin is installed, but DWEMR could not find a runnable ACPX command from that install.",
-      "Try `openclaw plugins install acpx`, then restart the gateway and rerun `/dwemr doctor --fix`.",
-      "If you manage ACPX separately, set `plugins.entries.dwemr.config.acpxPath` to the executable path.",
-    ];
-  }
-
-  return [
-    "No OpenClaw ACPX runtime was detected for DWEMR bootstrap.",
-    "Install or repair ACPX with `openclaw plugins install acpx`, restart the gateway, then rerun `/dwemr doctor --fix`.",
-    "If you already have a custom ACPX executable, set `plugins.entries.dwemr.config.acpxPath` to that path.",
-  ];
+  return `${runtime.backendKind} runtime (${runtime.ready ? "ready" : "not ready"})`;
 }
 
 function buildRuntimeRecoveryNotes(runtime: DwemrRuntimeState) {
-  const shell = getShellInspection(runtime);
-  if (shell) {
-    return buildAcpxRecoveryNotes(shell);
-  }
-  return runtime.notes?.length ? runtime.notes : ["The selected runtime backend is not ready. Re-run `/dwemr doctor --fix` or check backend runtime prerequisites."];
+  return runtime.notes?.length
+    ? runtime.notes
+    : ["The selected runtime backend is not ready. Check backend runtime prerequisites and re-run `/dwemr doctor`."];
 }
 
 function formatActiveProjectCommand(command: string, args = "", projectPath?: string) {
@@ -177,15 +144,6 @@ function appendRuntimeSection(lines: string[], runtime: DwemrRuntimeState) {
   if (runtime.notes?.length) {
     lines.push(...runtime.notes.map((note) => `- Runtime note: ${note}`));
   }
-
-  const shell = getShellInspection(runtime);
-  if (!shell) {
-    return;
-  }
-
-  lines.push("- Legacy ACPX compatibility diagnostics:");
-  lines.push(`- Managed runtime: ${shell.managedReady ? `ready (${shell.managedCommandPath})` : "not ready"}`);
-  lines.push(`- Configured acpxPath: ${shell.overrideCommandPath ? shell.overrideReady ? `ready (${shell.overrideCommandPath})` : `configured but not executable (${shell.overrideCommandPath})` : "not configured"}`);
 }
 
 function buildRuntimeLedgerNotes(activeRun: Awaited<ReturnType<DwemrRuntimeBackend["findActiveRun"]>> | undefined, pipelineMilestoneKind?: string) {
@@ -204,9 +162,6 @@ function buildRuntimeLedgerNotes(activeRun: Awaited<ReturnType<DwemrRuntimeBacke
   }
   if (activeRun.identity.backendKind === "acp-native" && !activeRun.identity.childSessionKey) {
     notes.push("Active ACP-native run is missing child session identity; stop/cancel reliability may be degraded.");
-  }
-  if (activeRun.identity.backendKind === "spawn" && !activeRun.pid) {
-    notes.push("Active spawn run is missing PID metadata; signal-based stop may fail.");
   }
   return notes;
 }
@@ -514,11 +469,7 @@ export function formatDoctorText(report: DwemrDoctorReport, pluginConfig: DwemrP
     }
   } else {
     if (!report.runtimeReady) {
-      if (getShellInspection(report.runtime)) {
-        lines.push(`- Run \`${formatActiveProjectCommand("doctor", "--fix", activeProjectReady)}\` to bootstrap the managed ACPX runtime.`);
-      } else {
-        lines.push(...buildRuntimeRecoveryNotes(report.runtime).map((note) => `- ${note}`));
-      }
+      lines.push(...buildRuntimeRecoveryNotes(report.runtime).map((note) => `- ${note}`));
     }
     if (report.project?.installState === "missing") {
       lines.push(`- Run \`/dwemr init ${report.project.targetPath}\` to install the DWEMR bootstrap assets.`);
@@ -564,20 +515,13 @@ export async function runDwemrDoctor(
     restartBehavior?: DwemrDoctorRestartBehavior;
   } = {},
 ): Promise<DwemrDoctorReport> {
-  let runtime = await runtimeBackend.inspectRuntime(pluginConfig);
+  const runtime = await runtimeBackend.inspectRuntime(pluginConfig);
   const fixNotes: string[] = [];
   const runtimeReady = () => runtime.ready;
   const shouldApplyExistingFixes = fixMode !== "inspect";
 
-  if (shouldApplyExistingFixes && !runtimeReady()) {
-    const previousRuntime = runtime;
-    runtime = await runtimeBackend.ensureRuntime(pluginConfig);
-    if (!previousRuntime.ready && runtime.ready) {
-      fixNotes.push("Bootstrapped the DWEMR runtime backend.");
-    } else if (!runtimeReady()) {
-      fixNotes.push("Could not bootstrap the DWEMR runtime backend automatically.");
-    }
-  }
+  // ACP-native runtime cannot be auto-bootstrapped; ACPX permission repair below
+  // is the only meaningful auto-fix path now that the legacy spawn backend is gone.
 
   let project: ProjectHealth | undefined;
   if (targetPath) {

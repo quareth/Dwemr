@@ -5,13 +5,12 @@ import { formatDoctorText } from "../../dwemr/src/openclaw/diagnostics/doctor";
 import { formatBootstrapPendingStatus, prepareOnboardingStateForEntry } from "../../dwemr/src/control-plane/onboarding-flow";
 import { formatOnboardingState, normalizeOnboardingState, parseOnboardingState } from "../../dwemr/src/control-plane/onboarding-state";
 import type { DwemrPluginConfig } from "../../dwemr/src/openclaw/state/project-selection";
-import type { DwemrRuntimeInspection } from "../../dwemr/src/openclaw/backend/runtime";
 import { buildAcpRuntimeOptionPatch } from "../../dwemr/src/openclaw/backend/acp-native/acp-config";
 import type { DwemrRuntimeState } from "../../dwemr/src/openclaw/backend/runtime-backend-types";
 import { DWEMR_CONTRACT_VERSION } from "../../dwemr/src/control-plane/state-contract";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { translateClaudeCommandSurface } from "../../dwemr/src/openclaw/backend/claude-runner";
+import { translateClaudeCommandSurface } from "../../dwemr/src/openclaw/backend/claude-output";
 import { buildProjectHealth } from "./fixtures/builders";
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../dwemr");
@@ -20,26 +19,10 @@ function readRelative(relativePath: string) {
   return readFileSync(path.join(projectRoot, relativePath), "utf8");
 }
 
-const runtimeInspection: DwemrRuntimeInspection = {
-  openclawPackageRoot: "/tmp/openclaw",
-  openclawAcpxExtensionPath: "/tmp/openclaw/dist/extensions/acpx",
-  openclawAcpxExtensionDetected: true,
-  managedRuntimeDir: "/tmp/dwemr-runtime",
-  managedCommandPath: "/tmp/dwemr-runtime/bin/acpx",
-  managedMetadataPath: "/tmp/dwemr-runtime/runtime.json",
-  managedReady: false,
-  overrideReady: false,
-  readyCommandPath: undefined,
-  readySource: undefined,
-  bootstrapSourcePath: undefined,
-  bootstrapSourceKind: undefined,
-  overrideCommandPath: undefined,
-};
-
 const runtimeState: DwemrRuntimeState = {
-  backendKind: "spawn",
+  backendKind: "acp-native",
   ready: false,
-  shellInspection: runtimeInspection,
+  notes: ["DWEMR ACP-native runtime is not ready in this fixture."],
 };
 
 test("normalizeOnboardingState canonicalizes saved clarification batches", () => {
@@ -221,19 +204,16 @@ test("formatDoctorText points unsupported contracts to init overwrite", () => {
   assert.match(text, /DWEMR did not auto-upgrade \/tmp\/dwemr-project/);
 });
 
-test("formatDoctorText gives ACPX recovery guidance when runtime bootstrap still cannot find a command", () => {
+test("formatDoctorText surfaces runtime notes when the ACP-native runtime is not ready", () => {
   const text = formatDoctorText(
     {
       runtime: runtimeState,
       runtimeReady: false,
       runtimeLedgerNotes: [],
       project: buildProjectHealth(),
-      fixApplied: true,
-      fixMode: "apply",
-      fixNotes: [
-        "Could not bootstrap the managed ACPX runtime automatically.",
-        "OpenClaw's ACPX runtime plugin is installed, but DWEMR could not find a runnable ACPX command from that install.",
-      ],
+      fixApplied: false,
+      fixMode: "inspect",
+      fixNotes: [],
       previewNotes: [],
       automationNotes: [],
       claudeProbe: { status: "skipped", detail: "Skipped because no execution runtime is ready yet." },
@@ -242,43 +222,9 @@ test("formatDoctorText gives ACPX recovery guidance when runtime bootstrap still
     undefined,
   );
 
-  assert.match(text, /Legacy ACPX compatibility diagnostics:/);
-  assert.match(text, /Try `openclaw plugins install acpx`, then restart the gateway and rerun `\/dwemr doctor --fix`\./);
-  assert.match(text, /set `plugins\.entries\.dwemr\.config\.acpxPath` to the executable path/);
-  assert.doesNotMatch(text, /PATH-based `acpx` executable/);
-  assert.doesNotMatch(text, /Retry the original command/);
-});
-
-test("formatDoctorText no-extension ACPX guidance does not mention PATH fallback", () => {
-  const text = formatDoctorText(
-    {
-      runtime: {
-        backendKind: "spawn",
-        ready: false,
-        shellInspection: {
-          ...runtimeInspection,
-          openclawAcpxExtensionDetected: false,
-          openclawAcpxExtensionPath: undefined,
-        },
-      },
-      runtimeReady: false,
-      runtimeLedgerNotes: [],
-      project: buildProjectHealth(),
-      fixApplied: true,
-      fixMode: "apply",
-      fixNotes: [
-        "Could not bootstrap the managed ACPX runtime automatically.",
-      ],
-      previewNotes: [],
-      automationNotes: [],
-      claudeProbe: { status: "skipped", detail: "Skipped because no execution runtime is ready yet." },
-    },
-    {} satisfies DwemrPluginConfig,
-    undefined,
-  );
-
-  assert.match(text, /No OpenClaw ACPX runtime was detected for DWEMR bootstrap\./);
-  assert.doesNotMatch(text, /PATH-based `acpx` executable/);
+  assert.match(text, /DWEMR ACP-native runtime is not ready in this fixture\./);
+  assert.doesNotMatch(text, /Legacy ACPX compatibility diagnostics/);
+  assert.doesNotMatch(text, /set `plugins\.entries\.dwemr\.config\.acpxPath`/);
 });
 
 test("formatDoctorText suggests ACPX permission and timeout host settings when probe fails", () => {

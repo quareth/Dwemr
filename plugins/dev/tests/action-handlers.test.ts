@@ -705,15 +705,14 @@ test("formatStopResult handles already_exited status", () => {
     status: "already_exited",
     run: {
       projectPath: "/tmp/test",
-      pid: 12345,
       startedAt: new Date().toISOString(),
       action: "continue",
       claudeCommand: "/delivery-continue",
       sessionName: "dwemr-test",
       identity: {
-        backendKind: "spawn",
-        runId: "spawn:/tmp/test:12345:test",
-        pid: 12345,
+        backendKind: "acp-native",
+        runId: "acp-native:/tmp/test:test",
+        childSessionKey: "dwemr-test",
       },
     },
   });

@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
-import type { DwemrRuntimeConfig } from "../runtime";
-import type { DwemrClaudeModelConfig } from "../claude-runner";
+import type { DwemrClaudeModelConfig, DwemrRuntimeConfig } from "../runtime-types";
 import { normalizeAcpAgentId } from "./acp-config";
 
 export type AcpSessionKeyScope =
