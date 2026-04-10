@@ -1,7 +1,7 @@
 import type { DwemrRuntimeConfig } from "./runtime";
 import type { DwemrRuntimeContext, RuntimeBackendFactory } from "./runtime-backend-types";
 import { ACP_NATIVE_BACKEND_KIND, asRuntimeApi, normalizeOptionalString } from "./acp-config";
-import { isAcpRuntimeReady } from "./acp-session-lifecycle";
+import { isAcpRuntimeReady } from "./acp-readiness";
 import { createSpawnRuntimeBackend } from "./spawn-backend";
 import { createAcpNativeRuntimeBackend } from "./acp-native-backend";
 

@@ -30,12 +30,12 @@ import {
 import { buildAcpSessionScopeKey, buildCommandScopedAcpSessionKey } from "./acp-keys";
 import { collectAcpRuntimeOutput, formatAcpLifecycleError } from "./acp-output";
 import { type AcpFlowTracking, createAcpFlowTracking } from "./acp-flow-tracking";
+import { isAcpRuntimeReady } from "./acp-readiness";
 import {
   ACP_LIFECYCLE_REASONS,
   closeAcpSession,
   closeAcpCommandSession,
   discoverAcpAgentPid,
-  isAcpRuntimeReady,
   reconcileTrackedAcpRun,
 } from "./acp-session-lifecycle";
 import { attemptFlowCancel, attemptOsKill, attemptSessionCancel } from "./acp-stop";
