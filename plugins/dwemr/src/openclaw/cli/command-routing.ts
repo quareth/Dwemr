@@ -73,7 +73,7 @@ function formatProjectScopedHelp(command: string, suffix: string, description: s
 function formatUsageForProject(defaultProjectPath: string | undefined) {
   return [
     "DWEMR commands:",
-    "- /dwemr doctor [path] [--fix]",
+    "- /dwemr doctor [path] [--fix] [--restart|--no-restart]",
     "- /dwemr init [path] [--overwrite] [--confirm-overwrite]",
     "- /dwemr mode <auto|checkpointed>",
     "- /dwemr projects",
@@ -97,9 +97,10 @@ function formatUsageForProject(defaultProjectPath: string | undefined) {
 export function formatHelpText(defaultProjectPath: string | undefined) {
   const lines = [
     "DWEMR commands:",
-    "- doctor [path] [--fix]: inspect the managed DWEMR runtime and optionally self-heal it",
+    "- doctor [path] [--fix] [--restart|--no-restart]: inspect the DWEMR runtime, preview ACPX permission repair, and optionally self-heal it",
     "- init [path] [--overwrite] [--confirm-overwrite]: install the DWEMR bootstrap kit; overwrite recreates the target folder from scratch",
     "- mode <auto|checkpointed>: set the execution mode for the active DWEMR project",
+    "- sessions [clear]: list or clear only DWEMR-tracked ACP sessions; unrelated ACP/ACPX sessions are never touched",
     "- projects: list remembered DWEMR projects and show which one is active",
     "- help: list DWEMR commands and what each one does",
     "- use <path>: remember a project path and make it the active project",

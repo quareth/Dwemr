@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { formatHelpText, formatUsage, mapActionToClaudeCommand } from "../../dwemr/src/openclaw/command-routing";
+import { formatHelpText, formatUsage, mapActionToClaudeCommand } from "../../dwemr/src/openclaw/cli/command-routing";
 
 test("formatUsage marks release commands as requiring the release lane", () => {
   const text = formatUsage();

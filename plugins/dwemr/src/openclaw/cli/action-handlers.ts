@@ -2,9 +2,10 @@ import path from "node:path";
 import type { HandlerContext, HandlerResult } from "./action-handler-types";
 import { textResult } from "./action-handler-types";
 import { buildInitHelp, buildModeHelp, buildRunnerHelp, buildUseHelp, formatHelpText, mapActionToClaudeCommand } from "./command-routing";
-import { stopActiveRun, findActiveRun } from "./active-runs";
-import { formatRunnerResult, runClaudeCommand, translateClaudeCommandSurface } from "./claude-runner";
-import { formatDoctorText, preflightExecution, runDwemrDoctor } from "./doctor";
+import { formatRunnerResult, translateClaudeCommandSurface } from "../backend/claude-output";
+import { formatDoctorText, preflightExecution, runDwemrDoctor } from "../diagnostics/doctor";
+import { getDefaultRuntimeBackend } from "../backend/runtime-backend";
+import type { DwemrRuntimeBackend, DwemrSessionInfo } from "../backend/runtime-backend-types";
 import {
   formatBootstrapPendingStatus,
   formatOnboardingBlocked,
@@ -12,9 +13,9 @@ import {
   formatProjectUseStatus,
   formatUnsupportedContract,
   prepareOnboardingStateForEntry,
-} from "../control-plane/onboarding-flow";
-import { writeOnboardingState } from "../control-plane/onboarding-state";
-import { syncPipelineExecutionMode, readPipelineStateBrief, formatPipelineStateBrief } from "../control-plane/pipeline-state";
+} from "../../control-plane/onboarding-flow";
+import { writeOnboardingState } from "../../control-plane/onboarding-state";
+import { syncPipelineExecutionMode, readPipelineStateBrief, formatPipelineStateBrief } from "../../control-plane/pipeline-state";
 import {
   normalizeExecutionModeInput,
   readProjectExecutionMode,
@@ -25,9 +26,9 @@ import {
   isGitEnabled,
   disableProjectGit,
   type DwemrExecutionMode,
-} from "../control-plane/project-config";
-import { formatOverwriteConfirmation, initializeProject, inspectProjectHealth, pathExists, provisionProjectProfile, validateInitTargetPath } from "../control-plane/project-assets";
-import { formatProjectsText, getPluginConfig, rememberProjectSelection } from "./project-selection";
+} from "../../control-plane/project-config";
+import { formatOverwriteConfirmation, initializeProject, inspectProjectHealth, pathExists, provisionProjectProfile, validateInitTargetPath } from "../../control-plane/project-assets";
+import { formatProjectsText, getPluginConfig, rememberProjectSelection } from "../state/project-selection";
 
 // ── Constants ──────────────────────────────────────────────────────────
 
@@ -47,9 +48,21 @@ const RELEASE_LANE_ACTIONS = new Set(["release", "pr"]);
 const EXECUTION_MODE_REFRESH_ACTIONS = new Set(["start", "continue"]);
 const ACTIONS_THAT_KEEP_STANDARD_TIMEOUT = new Set(["status", "what-now"]);
 
+function resolveRuntimeBackend(ctx: Pick<HandlerContext, "runtimeBackend" | "pluginConfig" | "api" | "runtimeContext">) {
+  return ctx.runtimeBackend ?? getDefaultRuntimeBackend({
+    runtimeContext: ctx.runtimeContext ?? { api: ctx.api },
+    runtimeConfig: ctx.pluginConfig,
+  });
+}
+
 // ── Internal helpers ───────────────────────────────────────────────────
 
-export function formatStopResult(result: Awaited<ReturnType<typeof stopActiveRun>>) {
+export function formatStopResult(result: Awaited<ReturnType<DwemrRuntimeBackend["stopActiveRun"]>>) {
+  const commandText = result.status === "not_found" ? undefined : result.run.claudeCommand;
+  const translatedCommand = commandText ? translateClaudeCommandSurface(commandText) : undefined;
+  const runIdText = result.status === "not_found" ? undefined : result.run.identity.runId;
+  const runtimeOwner = result.status === "not_found" ? undefined : formatRuntimeOwnerDescriptor(result.run);
+
   if (result.status === "not_found") {
     return [
       `No active OpenClaw-managed DWEMR run is currently registered for ${result.projectPath}.`,
@@ -60,8 +73,8 @@ export function formatStopResult(result: Awaited<ReturnType<typeof stopActiveRun
 
   if (result.status === "already_exited") {
     return [
-      `No live DWEMR process was still running for ${result.run.projectPath}.`,
-      `Cleared the stale active-run record for \`${translateClaudeCommandSurface(result.run.claudeCommand)}\`.`,
+      `No active DWEMR runtime owner was still in flight for ${result.run.projectPath}.`,
+      `Cleared the stale active-run record for \`${translatedCommand ?? runIdText ?? "unknown run"}\`.`,
     ].join("\n");
   }
 
@@ -69,8 +82,8 @@ export function formatStopResult(result: Awaited<ReturnType<typeof stopActiveRun
     return [
       `DWEMR could not stop the active run for ${result.run.projectPath}.`,
       "",
-      `Claude command: \`${translateClaudeCommandSurface(result.run.claudeCommand)}\``,
-      `PID: \`${result.run.pid}\``,
+      translatedCommand ? `Claude command: \`${translatedCommand}\`` : `Run ID: \`${runIdText}\``,
+      `Runtime owner: \`${runtimeOwner ?? result.run.identity.backendKind}\``,
       "",
       String(result.error),
     ].join("\n");
@@ -79,12 +92,34 @@ export function formatStopResult(result: Awaited<ReturnType<typeof stopActiveRun
   return [
     `Stopped the active DWEMR run for ${result.run.projectPath}.`,
     `Action: \`${result.run.action}\``,
-    `Claude command: \`${translateClaudeCommandSurface(result.run.claudeCommand)}\``,
-    `PID: \`${result.run.pid}\``,
-    `Signal: \`${result.signal}\``,
+    translatedCommand ? `Claude command: \`${translatedCommand}\`` : `Run ID: \`${runIdText}\``,
+    `Runtime owner: \`${runtimeOwner ?? result.run.identity.backendKind}\``,
+    `Stop mechanism: \`${result.mechanism.kind}${result.mechanism.detail ? ` (${result.mechanism.detail})` : ""}\``,
     "",
     "Resume later with `/dwemr continue` or a narrower `/dwemr` command from the last saved checkpoint.",
   ].join("\n");
+}
+
+function formatRuntimeOwnerDescriptor(run: {
+  identity: {
+    backendKind: string;
+    runId: string;
+    flowId?: string;
+    taskId?: string;
+    childSessionKey?: string;
+  };
+  pid?: number;
+  action: string;
+  startedAt: string;
+}) {
+  const parts: string[] = [`${run.identity.backendKind} run ${run.identity.runId}`];
+  if (run.identity.flowId) {
+    parts.push(`flow ${run.identity.flowId}`);
+  }
+  if (run.identity.taskId) {
+    parts.push(`task ${run.identity.taskId}`);
+  }
+  return parts.join(" · ");
 }
 
 async function resolveClaudeRunOptions(stateDir: string, targetPath: string, action: string) {
@@ -104,8 +139,14 @@ async function resolveClaudeRunOptions(stateDir: string, targetPath: string, act
   };
 }
 
-async function ensureBootstrapReady(pluginConfig: ReturnType<typeof getPluginConfig>, targetPath: string, defaultProjectPath: string | undefined, action: string) {
-  return preflightExecution(pluginConfig, targetPath, defaultProjectPath, action, { allowBootstrap: true });
+async function ensureBootstrapReady(
+  pluginConfig: ReturnType<typeof getPluginConfig>,
+  targetPath: string,
+  defaultProjectPath: string | undefined,
+  action: string,
+  runtimeBackend: DwemrRuntimeBackend,
+) {
+  return preflightExecution(pluginConfig, targetPath, defaultProjectPath, action, { allowBootstrap: true }, runtimeBackend);
 }
 
 async function runWithPreflight(
@@ -115,13 +156,14 @@ async function runWithPreflight(
   defaultProjectPath: string | undefined,
   action: string,
   claudeCommand: string,
+  runtimeBackend: DwemrRuntimeBackend,
   options: {
     allowBootstrap?: boolean;
   } = {},
 ) {
   const preflight = await preflightExecution(pluginConfig, targetPath, defaultProjectPath, action, {
     allowBootstrap: options.allowBootstrap,
-  });
+  }, runtimeBackend);
   if ("error" in preflight) {
     return preflight.error;
   }
@@ -129,13 +171,13 @@ async function runWithPreflight(
   const projectModelConfig = await readProjectModelConfig(targetPath);
   const effectiveConfig = { ...pluginConfig, ...projectModelConfig };
 
-  const result = await runClaudeCommand(
-    preflight.commandPath,
+  const result = await runtimeBackend.runClaudeCommand({
     targetPath,
     claudeCommand,
-    effectiveConfig,
-    await resolveClaudeRunOptions(stateDir, targetPath, action),
-  );
+    runtimeConfig: effectiveConfig,
+    options: await resolveClaudeRunOptions(stateDir, targetPath, action),
+    runtimeState: preflight.runtime,
+  });
   return formatRunnerResult(claudeCommand, result.exitCode, result.stdout, result.stderr, result.timedOut);
 }
 
@@ -145,6 +187,7 @@ async function ensureProfileProvisioned(
   targetPath: string,
   defaultProjectPath: string | undefined,
   action: string,
+  runtimeBackend: DwemrRuntimeBackend,
   requestText?: string,
 ): Promise<{ project: Awaited<ReturnType<typeof inspectProjectHealth>> } | { error: string }> {
   let project = await inspectProjectHealth(targetPath);
@@ -155,7 +198,7 @@ async function ensureProfileProvisioned(
     return { error: formatUnsupportedContract(targetPath, project, action) };
   }
 
-  const preflight = await ensureBootstrapReady(pluginConfig, targetPath, defaultProjectPath, "onboarding");
+  const preflight = await ensureBootstrapReady(pluginConfig, targetPath, defaultProjectPath, "onboarding", runtimeBackend);
   if ("error" in preflight && typeof preflight.error === "string") {
     return { error: preflight.error };
   }
@@ -169,16 +212,16 @@ async function ensureProfileProvisioned(
       });
     }
 
-    const onboardingResult = await runClaudeCommand(
-      preflight.commandPath,
+    const onboardingResult = await runtimeBackend.runClaudeCommand({
       targetPath,
-      "/delivery-driver onboarding",
-      pluginConfig,
-      {
+      claudeCommand: "/delivery-driver onboarding",
+      runtimeConfig: pluginConfig,
+      options: {
         stateDir,
         action: "onboarding",
       },
-    );
+      runtimeState: preflight.runtime,
+    });
     const formatted = formatRunnerResult(
       "/delivery-driver onboarding",
       onboardingResult.exitCode,
@@ -229,15 +272,25 @@ async function runWithEnoentFallback(
   targetPath: string,
   action: string,
   claudeCommand: string,
+  runtimeBackend: DwemrRuntimeBackend,
   options?: { allowBootstrap?: boolean; prefixText?: string },
 ): Promise<HandlerResult> {
   try {
-    const text = await runWithPreflight(ctx.pluginConfig, ctx.stateDir, targetPath, ctx.defaultProjectPath, action, claudeCommand, options);
+    const text = await runWithPreflight(
+      ctx.pluginConfig,
+      ctx.stateDir,
+      targetPath,
+      ctx.defaultProjectPath,
+      action,
+      claudeCommand,
+      runtimeBackend,
+      options,
+    );
     return textResult((options?.prefixText ?? "") + text);
   } catch (error) {
     const execError = error as NodeJS.ErrnoException;
     if (execError.code === "ENOENT") {
-      const report = await runDwemrDoctor(ctx.pluginConfig, targetPath, false);
+      const report = await runDwemrDoctor(ctx.pluginConfig, targetPath, "inspect", runtimeBackend, { stateDir: ctx.stateDir, api: ctx.api });
       return textResult(formatDoctorText(report, ctx.pluginConfig, ctx.defaultProjectPath));
     }
     return textResult(`DWEMR failed to run \`${claudeCommand}\` in ${targetPath}.\n\n${String(error)}`);
@@ -277,6 +330,7 @@ export async function handleUse(ctx: HandlerContext, tokens: string[]): Promise<
 }
 
 export async function handleStop(ctx: HandlerContext, tokens: string[]): Promise<HandlerResult> {
+  const runtimeBackend = resolveRuntimeBackend(ctx);
   const stopTokens = tokens.slice(1);
   if (stopTokens.length > 1) {
     return textResult("Too many positional arguments for `stop`.\n" + buildRunnerHelp(ctx.defaultProjectPath));
@@ -287,7 +341,7 @@ export async function handleStop(ctx: HandlerContext, tokens: string[]): Promise
     return textResult("Project path is required.\n" + buildRunnerHelp(ctx.defaultProjectPath));
   }
 
-  return textResult(formatStopResult(await stopActiveRun(ctx.stateDir, targetPath)));
+  return textResult(formatStopResult(await runtimeBackend.stopActiveRun(ctx.stateDir, targetPath)));
 }
 
 export async function handleInit(ctx: HandlerContext, tokens: string[]): Promise<HandlerResult> {
@@ -317,10 +371,16 @@ export async function handleInit(ctx: HandlerContext, tokens: string[]): Promise
 }
 
 export async function handleDoctor(ctx: HandlerContext, tokens: string[]): Promise<HandlerResult> {
+  const runtimeBackend = resolveRuntimeBackend(ctx);
   const action = tokens[0];
   const doctorTokens = tokens.slice(1);
   const applyFix = action === "repair" || doctorTokens.includes("--fix");
-  const pathTokens = doctorTokens.filter((token) => token !== "--fix");
+  const restartRequested = action === "repair" || doctorTokens.includes("--restart");
+  const noRestartRequested = doctorTokens.includes("--no-restart");
+  if (restartRequested && noRestartRequested) {
+    return textResult("Choose only one ACPX repair mode: `--restart` or `--no-restart`.");
+  }
+  const pathTokens = doctorTokens.filter((token) => token !== "--fix" && token !== "--restart" && token !== "--no-restart");
 
   if (pathTokens.length > 1) {
     return textResult("Too many positional arguments for `doctor`.\n" + buildRunnerHelp(ctx.defaultProjectPath));
@@ -331,7 +391,17 @@ export async function handleDoctor(ctx: HandlerContext, tokens: string[]): Promi
     const project = await inspectProjectHealth(targetPath);
     await rememberProjectSelection(ctx.api, targetPath, { initialized: project.installState !== "missing", setActive: true });
   }
-  const report = await runDwemrDoctor(ctx.pluginConfig, targetPath, applyFix);
+  const report = await runDwemrDoctor(
+    ctx.pluginConfig,
+    targetPath,
+    applyFix ? restartRequested || noRestartRequested ? "apply" : "preview" : "inspect",
+    runtimeBackend,
+    {
+      stateDir: ctx.stateDir,
+      api: ctx.api,
+      restartBehavior: restartRequested ? "restart" : "no-restart",
+    },
+  );
   return textResult(formatDoctorText(report, ctx.pluginConfig, ctx.defaultProjectPath));
 }
 
@@ -418,6 +488,78 @@ export async function handleMode(ctx: HandlerContext, tokens: string[]): Promise
   );
 }
 
+function formatSessionState(state: string) {
+  switch (state) {
+    case "idle": return "idle";
+    case "running": return "running";
+    case "error": return "ERROR";
+    case "stale": return "stale";
+    case "none": return "not found";
+    default: return state;
+  }
+}
+
+function formatSessionInfo(session: DwemrSessionInfo) {
+  const parts = [
+    `- \`${session.sessionKey}\``,
+    `  State: **${formatSessionState(session.state)}**` +
+      (session.pid ? ` | PID: ${session.pid}` : "") +
+      (session.mode ? ` | Mode: ${session.mode}` : "") +
+      (session.agent ? ` | Agent: ${session.agent}` : ""),
+  ];
+  if (session.projectPath) {
+    parts.push(`  Project: ${session.projectPath}` + (session.action ? ` (${session.action})` : ""));
+  }
+  if (session.lastActivityAt) {
+    const ago = Math.round((Date.now() - session.lastActivityAt) / 1000);
+    parts.push(`  Last activity: ${ago}s ago`);
+  }
+  if (session.lastError) {
+    parts.push(`  Last error: ${session.lastError}`);
+  }
+  return parts.join("\n");
+}
+
+export async function handleSessions(ctx: HandlerContext, tokens: string[]): Promise<HandlerResult> {
+  const runtimeBackend = resolveRuntimeBackend(ctx);
+
+  if (!runtimeBackend.listSessions || !runtimeBackend.clearSessions) {
+    return textResult("Session listing is only available with the ACP-native runtime backend.");
+  }
+
+  const subcommand = tokens[1]?.toLowerCase();
+
+  if (subcommand === "clear") {
+    const result = await runtimeBackend.clearSessions(ctx.stateDir);
+    return textResult(
+      result.closed > 0 || result.failed > 0
+        ? `Cleared ${result.closed} tracked DWEMR session(s).`
+          + (result.failed > 0 ? ` ${result.failed} tracked session(s) failed to close.` : "")
+          + " Unrelated ACP/ACPX sessions were not touched."
+        : "No tracked DWEMR sessions to clear. Unrelated ACP/ACPX sessions were not touched.",
+    );
+  }
+
+  const { sessions, aggregate } = await runtimeBackend.listSessions(ctx.stateDir);
+
+  const lines: string[] = [];
+  lines.push(`ACP runtime cache: ${aggregate.activeSessions} active session(s), ${aggregate.evictedTotal} evicted total.`);
+  lines.push("DWEMR lists only sessions it currently tracks for DWEMR-owned runs. Unrelated ACP/ACPX sessions are not shown here.");
+
+  if (sessions.length === 0) {
+    lines.push("", "No tracked DWEMR sessions.");
+  } else {
+    lines.push("", `Tracked DWEMR sessions (${sessions.length}):`);
+    for (const session of sessions) {
+      lines.push("", formatSessionInfo(session));
+    }
+  }
+
+  lines.push("", "To clear tracked DWEMR sessions only: `/dwemr sessions clear`");
+
+  return textResult(lines.join("\n"));
+}
+
 export async function handleModelConfig(ctx: HandlerContext, tokens: string[]): Promise<HandlerResult> {
   const action = tokens[0];
   const targetPath = ctx.defaultProjectPath;
@@ -469,6 +611,7 @@ export async function handleModelConfig(ctx: HandlerContext, tokens: string[]): 
 // ── Complex routed handler ─────────────────────────────────────────────
 
 export async function handleGenericRouted(ctx: HandlerContext, tokens: string[]): Promise<HandlerResult> {
+  const runtimeBackend = resolveRuntimeBackend(ctx);
   const action = tokens[0];
   const mapped = mapActionToClaudeCommand(action, undefined, tokens, ctx.defaultProjectPath);
   if ("error" in mapped) {
@@ -486,11 +629,16 @@ export async function handleGenericRouted(ctx: HandlerContext, tokens: string[])
 
   if (project.installState === "bootstrap_only") {
     if (action === "status") {
-      const activeRun = await findActiveRun(ctx.stateDir, mapped.targetPath);
+      const activeRun = await runtimeBackend.findActiveRun(ctx.stateDir, mapped.targetPath);
       let activeRunInfo = "";
       if (activeRun) {
         const startedAt = new Date(activeRun.startedAt).toLocaleTimeString();
-        activeRunInfo = `\n\nActive process: PID ${activeRun.pid} (${activeRun.action}) — started ${startedAt}`;
+        const descriptor = formatRuntimeOwnerDescriptor(activeRun);
+        activeRunInfo = `\n\nActive runtime owner: ${descriptor} (${activeRun.action}) — started ${startedAt}`;
+      } else if (project.onboardingState.status === "awaiting_clarification") {
+        activeRunInfo = "\n\nActive runtime owner: none (waiting on onboarding clarification from saved DWEMR state)";
+      } else {
+        activeRunInfo = "\n\nActive runtime owner: none";
       }
       return textResult(formatBootstrapPendingStatus(mapped.targetPath, project) + activeRunInfo);
     }
@@ -510,6 +658,7 @@ export async function handleGenericRouted(ctx: HandlerContext, tokens: string[])
         mapped.targetPath,
         ctx.defaultProjectPath,
         action,
+        runtimeBackend,
         mapped.requestText,
       );
       if ("error" in ensured) {
@@ -538,19 +687,30 @@ export async function handleGenericRouted(ctx: HandlerContext, tokens: string[])
   if (action === "status" && project.installState === "profile_installed") {
     const [brief, activeRun] = await Promise.all([
       readPipelineStateBrief(mapped.targetPath),
-      findActiveRun(ctx.stateDir, mapped.targetPath),
+      runtimeBackend.findActiveRun(ctx.stateDir, mapped.targetPath),
     ]);
 
     let activeRunInfo: string;
     if (activeRun) {
       const startedAt = new Date(activeRun.startedAt).toLocaleTimeString();
-      activeRunInfo = `PID ${activeRun.pid} (${activeRun.action}) — started ${startedAt}`;
+      const descriptor = formatRuntimeOwnerDescriptor(activeRun);
+      activeRunInfo = `${descriptor} (${activeRun.action}) — started ${startedAt}`;
+    } else if (brief?.milestoneKind === "user_input_required") {
+      activeRunInfo = "none (waiting on user input from saved DWEMR state)";
     } else {
-      activeRunInfo = "none";
+      activeRunInfo = "none (no runtime owner in flight)";
     }
 
-    const snapshot = brief ? formatPipelineStateBrief(brief, activeRunInfo) : `Process: ${activeRunInfo}`;
-    const claudeText = await runWithPreflight(ctx.pluginConfig, ctx.stateDir, mapped.targetPath, ctx.defaultProjectPath, action, mapped.claudeCommand);
+    const snapshot = brief ? formatPipelineStateBrief(brief, activeRunInfo) : `Runtime owner: ${activeRunInfo}`;
+    const claudeText = await runWithPreflight(
+      ctx.pluginConfig,
+      ctx.stateDir,
+      mapped.targetPath,
+      ctx.defaultProjectPath,
+      action,
+      mapped.claudeCommand,
+      runtimeBackend,
+    );
     return textResult(`${snapshot}\n\n${claudeText}`);
   }
 
@@ -566,12 +726,12 @@ Use AskUserQuestion to get the user's answer in this session before continuing t
       if (EXECUTION_MODE_REFRESH_ACTIONS.has(action) && project.installState === "profile_installed") {
         await refreshPipelineExecutionMode(mapped.targetPath);
       }
-      return runWithEnoentFallback(ctx, mapped.targetPath, action, mapped.claudeCommand, { prefixText: injectedContext });
+      return runWithEnoentFallback(ctx, mapped.targetPath, action, mapped.claudeCommand, runtimeBackend, { prefixText: injectedContext });
     }
   }
 
   if (EXECUTION_MODE_REFRESH_ACTIONS.has(action) && project.installState === "profile_installed") {
     await refreshPipelineExecutionMode(mapped.targetPath);
   }
-  return runWithEnoentFallback(ctx, mapped.targetPath, action, mapped.claudeCommand);
+  return runWithEnoentFallback(ctx, mapped.targetPath, action, mapped.claudeCommand, runtimeBackend);
 }

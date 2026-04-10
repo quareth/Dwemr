@@ -80,7 +80,7 @@ export function formatPipelineStateBrief(brief: PipelineStateBrief, activeRunInf
   const lines: string[] = ["── DWEMR Pipeline Snapshot ──────────────────────"];
 
   if (activeRunInfo) {
-    lines.push(`Process : ${activeRunInfo}`);
+    lines.push(`Runtime : ${activeRunInfo}`);
   }
 
   if (brief.featureTitle) {

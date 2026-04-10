@@ -1,15 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
-import { formatDoctorText } from "../../dwemr/src/openclaw/doctor";
+import { formatDoctorText } from "../../dwemr/src/openclaw/diagnostics/doctor";
 import { formatBootstrapPendingStatus, prepareOnboardingStateForEntry } from "../../dwemr/src/control-plane/onboarding-flow";
-import { formatOnboardingState, normalizeOnboardingState } from "../../dwemr/src/control-plane/onboarding-state";
-import type { DwemrPluginConfig } from "../../dwemr/src/openclaw/project-selection";
-import type { DwemrRuntimeInspection } from "../../dwemr/src/openclaw/runtime";
+import { formatOnboardingState, normalizeOnboardingState, parseOnboardingState } from "../../dwemr/src/control-plane/onboarding-state";
+import type { DwemrPluginConfig } from "../../dwemr/src/openclaw/state/project-selection";
+import { buildAcpRuntimeOptionPatch } from "../../dwemr/src/openclaw/backend/acp-native/acp-config";
+import type { DwemrRuntimeState } from "../../dwemr/src/openclaw/backend/runtime-backend-types";
 import { DWEMR_CONTRACT_VERSION } from "../../dwemr/src/control-plane/state-contract";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { translateClaudeCommandSurface } from "../../dwemr/src/openclaw/claude-runner";
+import { translateClaudeCommandSurface } from "../../dwemr/src/openclaw/backend/claude-output";
 import { buildProjectHealth } from "./fixtures/builders";
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../dwemr");
@@ -18,21 +19,10 @@ function readRelative(relativePath: string) {
   return readFileSync(path.join(projectRoot, relativePath), "utf8");
 }
 
-const runtimeInspection: DwemrRuntimeInspection = {
-  openclawPackageRoot: "/tmp/openclaw",
-  openclawAcpxExtensionPath: "/tmp/openclaw/dist/extensions/acpx",
-  openclawAcpxExtensionDetected: true,
-  managedRuntimeDir: "/tmp/dwemr-runtime",
-  managedCommandPath: "/tmp/dwemr-runtime/bin/acpx",
-  managedMetadataPath: "/tmp/dwemr-runtime/runtime.json",
-  managedReady: false,
-  overrideReady: false,
-  pathFallbackCommandPath: undefined,
-  readyCommandPath: undefined,
-  readySource: undefined,
-  bootstrapSourcePath: undefined,
-  bootstrapSourceKind: undefined,
-  overrideCommandPath: undefined,
+const runtimeState: DwemrRuntimeState = {
+  backendKind: "acp-native",
+  ready: false,
+  notes: ["DWEMR ACP-native runtime is not ready in this fixture."],
 };
 
 test("normalizeOnboardingState canonicalizes saved clarification batches", () => {
@@ -107,6 +97,28 @@ test("prepareOnboardingStateForEntry preserves the original request when answeri
   assert.equal(prepared.clarificationResponse, "It should stay a bounded internal tool.");
 });
 
+test("onboarding state parser ignores legacy acp_session_key and formatter does not re-emit it", () => {
+  const parsed = parseOnboardingState([
+    "---",
+    'dwemr_contract_version: 4',
+    'status: "pending"',
+    'request_context: "Build a tool."',
+    'clarification_summary: "Need one answer."',
+    'clarification_questions: ["What kind?"]',
+    'acp_session_key: "agent:claude:acp:dwemr-abc123:onboarding"',
+    'updated_at: "2026-01-01T00:00:00.000Z"',
+    "---",
+    "",
+    "# Onboarding state",
+    "",
+  ].join("\n"));
+
+  assert.equal(parsed.status, "awaiting_clarification");
+
+  const serialized = formatOnboardingState(parsed);
+  assert.doesNotMatch(serialized, /acp_session_key:/);
+});
+
 test("formatBootstrapPendingStatus points pending clarification back to start", () => {
   const text = formatBootstrapPendingStatus(
     "/tmp/dwemr-project",
@@ -134,7 +146,9 @@ test("formatBootstrapPendingStatus keeps brand-new pending onboarding on request
 test("formatDoctorText points clarification follow-up to start and keeps what-now read-only", () => {
   const text = formatDoctorText(
     {
-      runtime: runtimeInspection,
+      runtime: runtimeState,
+      runtimeReady: false,
+      runtimeLedgerNotes: [],
       project: buildProjectHealth({
         onboardingState: normalizeOnboardingState({
           status: "pending",
@@ -144,7 +158,10 @@ test("formatDoctorText points clarification follow-up to start and keeps what-no
         }),
       }),
       fixApplied: false,
+      fixMode: "inspect",
       fixNotes: [],
+      previewNotes: [],
+      automationNotes: [],
       claudeProbe: { status: "skipped", detail: "Skipped because no execution runtime is ready yet." },
     },
     {} satisfies DwemrPluginConfig,
@@ -158,15 +175,20 @@ test("formatDoctorText points clarification follow-up to start and keeps what-no
 test("formatDoctorText points unsupported contracts to init overwrite", () => {
   const text = formatDoctorText(
     {
-      runtime: runtimeInspection,
+      runtime: runtimeState,
+      runtimeReady: false,
+      runtimeLedgerNotes: [],
       project: buildProjectHealth({
         installState: "unsupported_contract",
         contractIssues: [`.dwemr/state/pipeline-state.md: missing \`dwemr_contract_version: ${DWEMR_CONTRACT_VERSION}\``],
       }),
       fixApplied: true,
+      fixMode: "apply",
       fixNotes: [
         "DWEMR did not auto-upgrade /tmp/dwemr-project. Run `/dwemr init /tmp/dwemr-project --overwrite --confirm-overwrite` to destroy the current target folder contents and adopt the current contract from scratch.",
       ],
+      previewNotes: [],
+      automationNotes: [],
       claudeProbe: { status: "skipped", detail: "Skipped because no execution runtime is ready yet." },
     },
     {} satisfies DwemrPluginConfig,
@@ -182,26 +204,74 @@ test("formatDoctorText points unsupported contracts to init overwrite", () => {
   assert.match(text, /DWEMR did not auto-upgrade \/tmp\/dwemr-project/);
 });
 
-test("formatDoctorText gives ACPX recovery guidance when runtime bootstrap still cannot find a command", () => {
+test("formatDoctorText surfaces runtime notes when the ACP-native runtime is not ready", () => {
   const text = formatDoctorText(
     {
-      runtime: runtimeInspection,
+      runtime: runtimeState,
+      runtimeReady: false,
+      runtimeLedgerNotes: [],
       project: buildProjectHealth(),
-      fixApplied: true,
-      fixNotes: [
-        "Could not bootstrap the managed ACPX runtime automatically.",
-        "OpenClaw's ACPX runtime plugin is installed, but DWEMR could not find a runnable ACPX command from that install.",
-      ],
+      fixApplied: false,
+      fixMode: "inspect",
+      fixNotes: [],
+      previewNotes: [],
+      automationNotes: [],
       claudeProbe: { status: "skipped", detail: "Skipped because no execution runtime is ready yet." },
     },
     {} satisfies DwemrPluginConfig,
     undefined,
   );
 
-  assert.match(text, /OpenClaw ACPX extension: detected/);
-  assert.match(text, /Try `openclaw plugins install acpx`, then restart the gateway and rerun `\/dwemr doctor --fix`\./);
-  assert.match(text, /set `plugins\.entries\.dwemr\.config\.acpxPath` to the executable path/);
-  assert.doesNotMatch(text, /Retry the original command/);
+  assert.match(text, /DWEMR ACP-native runtime is not ready in this fixture\./);
+  assert.doesNotMatch(text, /Legacy ACPX compatibility diagnostics/);
+  assert.doesNotMatch(text, /set `plugins\.entries\.dwemr\.config\.acpxPath`/);
+});
+
+test("formatDoctorText suggests ACPX permission and timeout host settings when probe fails", () => {
+  const text = formatDoctorText(
+    {
+      runtime: runtimeState,
+      runtimeReady: true,
+      runtimeLedgerNotes: [],
+      project: buildProjectHealth(),
+      fixApplied: false,
+      fixMode: "inspect",
+      fixNotes: [],
+      previewNotes: [],
+      automationNotes: [],
+      claudeProbe: { status: "failed", detail: "ACP_TURN_FAILED: Could not apply ACP runtime options before turn execution." },
+      acpxPermissionRepair: {
+        applicable: true,
+        configAccess: "available",
+        permissionMode: undefined,
+        nonInteractivePermissions: undefined,
+        timeoutSeconds: undefined,
+        reloadMode: "hybrid",
+        needsRepair: true,
+        previewed: false,
+        attempted: false,
+        changed: false,
+        restartExpected: false,
+        manualRestartRequired: false,
+      },
+    },
+    {} satisfies DwemrPluginConfig,
+    undefined,
+  );
+
+  assert.match(text, /If you are seeing ACPX permission errors, run `openclaw config set plugins\.entries\.acpx\.config\.permissionMode approve-all` and restart the OpenClaw gateway\./);
+  assert.match(text, /If ACPX sessions fail during longer DWEMR turns or die around a repeatable time boundary, run `openclaw config set plugins\.entries\.acpx\.config\.timeoutSeconds 7200` and restart the OpenClaw gateway\./);
+  assert.match(text, /timeoutSeconds: not set/);
+});
+
+test("buildAcpRuntimeOptionPatch keeps only model and cwd for ACP-native sessions", () => {
+  const patch = buildAcpRuntimeOptionPatch("/tmp/dwemr-project", { model: "claude-sonnet-4-6" });
+
+  assert.deepEqual(patch, {
+    model: "claude-sonnet-4-6",
+    cwd: "/tmp/dwemr-project",
+  });
+  assert.ok(!("permissionProfile" in patch));
 });
 
 test("formatOnboardingState renders clarification and plain pending states differently", () => {
@@ -226,6 +296,8 @@ test("delivery-driver onboarding owns the strict interviewer invocation contract
 
   assert.match(text, /\/delivery-driver onboarding/);
   assert.match(text, /dispatch `interviewer` with only the raw saved onboarding request text from `request_context`/);
+  assert.match(text, /STOP_ON=onboarding_complete\|blocked_waiting_human\|explicit_block/);
+  assert.doesNotMatch(text, /STOP_ON=.*awaiting_clarification/);
   assert.match(text, /dispatch `interviewer` with only:/);
   assert.match(text, /saved `clarification_questions`/);
   assert.match(text, /exact user answer text from `clarification_response`/);

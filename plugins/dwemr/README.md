@@ -89,7 +89,7 @@ OpenClaw is the operator. Claude Code remains the delivery engine.
 ## Requirements
 
 - Node.js 22 or newer
-- OpenClaw `2026.3.24-beta.2` or newer
+- OpenClaw `2026.4.2` or newer
 - OpenClaw's ACPX runtime available on the machine
 - Claude Code installed and authenticated on the host machine
 
@@ -102,7 +102,67 @@ openclaw plugins install dwemr
 openclaw gateway restart
 ```
 
+For local development:
+
+```bash
+openclaw plugins install -l ./plugins/dwemr
+openclaw gateway restart
+```
+
 Then configure `plugins.entries.dwemr.config` in your OpenClaw config only if you need optional runtime overrides such as a default project path or model override.
+
+## ACPX Troubleshooting
+
+DWEMR ACP-native runs are more reliable with a larger ACPX host timeout budget.
+We recommend setting this before use:
+
+```bash
+openclaw config set plugins.entries.acpx.config.timeoutSeconds 7200
+openclaw gateway restart
+```
+
+`7200` means a 2-hour per-turn timeout. For especially long-running DWEMR sessions, you may need a higher value.
+
+You can check the current value with:
+
+```bash
+openclaw config get plugins.entries.acpx.config.timeoutSeconds
+```
+
+Reference values in current OpenClaw installs:
+
+- default: `120` seconds
+- minimum: `1` second
+- maximum: `86400` seconds
+
+Many environments work without extra ACPX permission tuning, so `permissionMode` is still conditional troubleshooting rather than a universal requirement.
+
+If you do hit ACPX-specific failures, these host-level settings are the first things to check:
+
+```bash
+openclaw config get plugins.entries.acpx.config.permissionMode
+```
+
+If you are getting ACPX permission errors in non-interactive DWEMR runs:
+
+```bash
+openclaw config set plugins.entries.acpx.config.permissionMode approve-all
+openclaw gateway restart
+```
+
+If ACPX sessions fail during longer DWEMR turns or die around a repeatable time boundary:
+
+```bash
+openclaw config set plugins.entries.acpx.config.timeoutSeconds 7200
+openclaw gateway restart
+```
+
+Why these help in some environments:
+
+- `permissionMode=approve-all` lets ACPX execute shell, edit, and write actions without interactive approval prompts
+- `timeoutSeconds=7200` gives longer ACPX turns enough host-level time budget and avoids time-bound failures we have observed in some environments
+
+These are ACPX host settings. Project-local `.claude/settings.json` does not replace them for ACP-native runs.
 
 ## Important Safety Note
 
@@ -110,7 +170,8 @@ DWEMR installs a project-local `.claude/settings.json` into initialized projects
 
 - Claude Code is put into `bypassPermissions` mode for that project
 - `Bash`, `Edit`, and `Write` are allowed
-- this is intentional so the bundled workflow can run unattended
+- this is intentional so the bundled workflow can run unattended inside Claude-managed project contexts
+- ACP-native runs still depend on ACPX host policy for the actual shell and file-write harness permissions
 
 Use DWEMR only in projects where that permission model is acceptable. Running it in an isolated environment is recommended.
 
@@ -146,6 +207,7 @@ Supported `/dwemr` actions:
 - `doctor [path] [--fix]`
 - `init [path] [--overwrite] [--confirm-overwrite]`
 - `mode <auto|checkpointed>`
+- `sessions [clear]`
 - `projects`
 - `use <path>`
 - `model [number|unset]`
@@ -176,57 +238,38 @@ The public commands dispatch directly to plugin tools with raw command arguments
 
 `/dwemr mode <auto|checkpointed>` is also handled directly by the plugin. It updates `.dwemr/project-config.yaml` for the active DWEMR project; CLI `auto` selects the canonical mode `autonomous`.
 
-`/dwemr stop` is handled directly by the plugin. It stops the active OpenClaw-managed DWEMR process for the selected project and leaves the Claude-owned workflow state files untouched so work can resume from the last saved checkpoint.
+`/dwemr stop` is handled directly by the plugin. It stops the active OpenClaw-managed DWEMR runtime owner for the selected project and leaves the Claude-owned workflow state files untouched so work can resume from the last saved checkpoint.
 
 `/dwemr what-now` maps to the internal Claude command `/delivery-what-now`, which is guidance-only. It reads authoritative DWEMR state first, uses memory only as optional narrative context, summarizes what happened most recently, and points the user to the safest next public `/dwemr` command. If onboarding is incomplete, DWEMR surfaces the saved onboarding clarification when one exists; otherwise it points the user back to a request-bearing onboarding command.
 
-At runtime DWEMR ensures a project-scoped Claude ACPX session named `dwemr`, then runs exactly one Claude slash command in quiet mode:
-
-```bash
-acpx --cwd "<project>" claude sessions ensure --name dwemr
-acpx --cwd "<project>" --format quiet claude -s dwemr "<claude-command>"
-```
+At runtime DWEMR executes one Claude entrypoint per routed command through the
+ACP-native runtime backend (OpenClaw-managed ACP session + turn control). The
+legacy spawn-based shell execution path was retired in 0.2.0 and ACP-native is
+now the only supported runtime.
 
 DWEMR does not emulate Claude’s internal agents. It maps the requested action to one Claude entrypoint and returns only the final assistant response on success.
-
-## Install
-
-```bash
-openclaw plugins install dwemr
-openclaw gateway restart
-```
-
-For local development:
-
-```bash
-openclaw plugins install -l ./plugins/dwemr
-openclaw gateway restart
-```
 
 ## Runtime behavior
 
 DWEMR keeps `/dwemr` available even before setup is healthy.
 
-DWEMR uses `acpx` under the hood for Claude execution, but the plugin bootstraps and manages that runtime for you by default.
+ACP-native run model:
 
-By default it bootstraps and uses a managed `acpx` wrapper under the OpenClaw state directory instead of relying on shell aliases or host `PATH`.
+- each routed `/dwemr` command executes as a one-shot ACP run
+- DWEMR continuity remains state-first via `.dwemr/state/*`, not by reusing one
+  long-lived ACP session id
 
-`acpx` is an internal implementation detail. Most users should never have to configure it manually.
+ACP-native runtime seam compatibility:
 
-If `/dwemr doctor --fix` reports that no ACPX runtime was found, try:
+| Seam | Requirement | Behavior |
+| --- | --- | --- |
+| `api.runtime.tasks.flows` | Required | Primary ACP-native runtime orchestration/read seam. |
+| `api.runtime.taskFlow` | Optional compatibility seam | Enables best-effort managed flow/task mutation ledger writes (`flowId`, `taskId`). Missing seam does not block command execution. |
 
-```bash
-openclaw plugins install acpx
-openclaw gateway restart
-```
-
-Then rerun:
-
-```text
-/dwemr doctor --fix
-```
-
-If you manage ACPX separately or DWEMR still cannot detect it automatically, set `plugins.entries.dwemr.config.acpxPath` to the executable path.
+When ACP-native prerequisites are missing at runtime, `/dwemr doctor` reports
+the missing seams. There is no longer a fallback execution path; `/dwemr help`
+and `/dwemr doctor` remain reachable on broken installs so the user can
+diagnose the missing prerequisites.
 
 DWEMR also remembers multiple project paths in its own state storage while keeping exactly one active project at a time.
 
@@ -234,7 +277,7 @@ DWEMR also remembers multiple project paths in its own state storage while keepi
 
 1. Install or link the plugin.
 2. Run `/dwemr help` or `/dwemr doctor <path>`.
-3. If DWEMR reports missing runtime state, run `/dwemr doctor <path> --fix`.
+3. If DWEMR reports missing runtime state or ACPX permission issues, run `/dwemr doctor <path> --fix`.
 4. Make sure Claude Code is authenticated on the machine with `claude auth status`.
 5. Run `/dwemr init <path>`.
 6. Run `/dwemr start <request>` to complete onboarding and let DWEMR provision the selected workflow profile.
@@ -255,26 +298,123 @@ Use `/dwemr mode checkpointed` when you want DWEMR to stop at major milestones a
 
 In `autonomous` mode, long-running DWEMR execution commands are allowed to keep running without the old delivery timeout. If you need to interrupt a run manually, use `/dwemr stop`.
 
+## Usage examples
+
+### 1. Initialize a project
+
+```text
+/dwemr init /absolute/path/to/my-project
+```
+
+`/dwemr init` creates the target project folder and installs the DWEMR bootstrap kit into it. In practice that means:
+
+- `CLAUDE.md`
+- `.claude/` command and agent assets
+- `.dwemr/` state, memory, reference, guide, and runbook files
+
+The initialized project becomes the active DWEMR project automatically.
+
+### 2. Work with one active project at a time
+
+DWEMR can remember multiple projects, but only one project is active at a time. When you run a `/dwemr` command without a path, DWEMR uses the active project.
+
+```text
+/dwemr projects
+/dwemr use /absolute/path/to/project-a
+/dwemr status
+/dwemr use /absolute/path/to/project-b
+/dwemr what-now
+```
+
+In that sequence, `/dwemr status` runs against `project-a`, and after switching, `/dwemr what-now` runs against `project-b`.
+
+### 3. Start work and continue onboarding
+
+```text
+/dwemr start Build me a simple calculator app
+/dwemr start 1: personal calculator 2A 3A 4B 5A 6A 7A
+```
+
+The first `/dwemr start` begins onboarding or delivery. If DWEMR returns one clarification batch, answer it with another `/dwemr start <response>`.
+
+### 4. Ask DWEMR what to do next
+
+```text
+/dwemr what-now
+```
+
+`/dwemr what-now` is guidance-only. It does not start a new run by itself. It reads DWEMR state, summarizes the current situation, and points you to the safest next public command. If onboarding is waiting on clarification, it repeats the saved clarification instead of starting over.
+
+### 5. Tune model, subagent model, and effort
+
+```text
+/dwemr model
+/dwemr model 2
+/dwemr subagents
+/dwemr subagents 1
+/dwemr effort
+/dwemr effort 3
+/dwemr effort unset
+```
+
+These commands are project-scoped. Running `/dwemr model`, `/dwemr subagents`, or `/dwemr effort` with no value shows the numbered choices for the active project. Then you can select by number or clear the override with `unset`.
+
+### 6. Check live progress and stop a run
+
+```text
+/dwemr status
+/dwemr stop
+```
+
+`/dwemr status` shows the current delivery state for the active project without changing it. If a long-running DWEMR execution is in flight, `/dwemr stop` cancels the active OpenClaw-managed runtime owner and keeps the saved workflow state so you can resume later.
+
+### 7. Inspect or clear tracked DWEMR ACP sessions
+
+```text
+/dwemr sessions
+/dwemr sessions clear
+```
+
+Use `/dwemr sessions` to list only the ACP sessions DWEMR currently tracks for DWEMR-owned runs. This is especially useful when checking for stale or hung ACP-native DWEMR activity. Use `/dwemr sessions clear` to close only those tracked DWEMR sessions. It does not close unrelated ACP or ACPX sessions owned by other tools. Session listing and clearing are available only with the ACP-native runtime backend.
+
+### 8. Change execution mode
+
+```text
+/dwemr mode checkpointed
+/dwemr mode auto
+```
+
+`/dwemr mode` controls whether DWEMR keeps going until blocked (`auto`) or pauses at major milestones (`checkpointed`).
+
 ## Doctor and self-heal
 
 `/dwemr doctor [path]` reports:
 
-- whether the managed DWEMR runtime exists
-- whether an advanced `acpxPath` override is configured and executable
-- whether a bundled ACPX bootstrap source is available
+- whether the ACP-native runtime backend is ready
+- ACP-native seam availability (`tasks.flows` required, `taskFlow` compatibility)
+- whether ACPX host timeout and permission config look healthy for DWEMR's ACP-native automation path
 - whether the target project exists
 - whether the project is missing DWEMR assets, bootstrap-only, or fully profile-installed
 - whether onboarding is pending, waiting on clarification, or complete
-- whether `claude auth status` is healthy
-- whether `acpx claude sessions ensure --name dwemr` works
-- whether a quiet Claude prompt returns the expected health-check response
+- whether the configured runtime can execute a DWEMR health-check prompt
 
-`/dwemr doctor [path] --fix` will try to:
+`/dwemr doctor [path] --fix` now previews ACPX host repair when ACP-native automation is blocked. It explains the root cause and prints exactly two follow-up commands:
 
-- bootstrap or repair the managed ACPX runtime
+- `/dwemr doctor [path] --fix --restart`
+- `/dwemr doctor [path] --fix --no-restart`
+
+`/dwemr doctor [path] --fix --restart` and `/dwemr doctor [path] --fix --no-restart` will try to:
+
+- bootstrap or repair the configured runtime backend path
 - reuse the bundled ACPX source shipped with OpenClaw when available
+- repair `plugins.entries.acpx.config.permissionMode` to `approve-all`
+- repair `plugins.entries.acpx.config.nonInteractivePermissions` to `fail`
 - install missing DWEMR bootstrap assets without requiring a separate shell setup step
 - finish profile provisioning only when onboarding has already selected a profile
+
+Doctor also reports ACPX timeout guidance when it detects repeatable time-bound turn failures, but timeout changes remain host-level troubleshooting rather than an automatic `--fix` mutation.
+
+For ACP-native runs, ACPX owns shell and file-write permissions. `.claude/settings.json` and Claude CLI bypass flags do not override ACPX harness policy. When doctor repairs ACPX permission config with `--restart`, it inspects `gateway.reload.mode` and tells you whether OpenClaw should apply the restart path automatically or whether a manual restart is still required.
 
 ## Verification checklist
 
@@ -282,13 +422,16 @@ After shipping or installing a new DWEMR build, verify these flows:
 
 - missing runtime: `/dwemr help` still works before any bootstrap
 - missing runtime: `/dwemr doctor <path>` reports the runtime as not ready
-- self-heal: `/dwemr doctor <path> --fix` creates a usable managed runtime
+- ACPX preview: `/dwemr doctor <path> --fix` prints the two repair choices without mutating host ACPX permission config
+- ACPX repair only: `/dwemr doctor <path> --fix --no-restart` repairs ACPX permission config and preserves unrelated OpenClaw config
+- ACPX restart-aware repair: `/dwemr doctor <path> --fix --restart` explains whether OpenClaw should restart/apply automatically based on `gateway.reload.mode`
+- self-heal: `/dwemr doctor <path> --fix --restart` or `--no-restart` creates a usable managed runtime when ACPX permission config was the blocker
 - repaired runtime: `/dwemr doctor <path>` reports a ready execution runtime afterward
 - repaired runtime: `/dwemr status` succeeds after self-heal
 - bootstrap-only project: `/dwemr doctor <path>` reports onboarding as pending instead of corruption
 - onboarding entry gating: `/dwemr continue` does not start first-pass onboarding on a brand-new bootstrap-only project
 - execution mode control: `/dwemr mode checkpointed` updates the active project's `.dwemr/project-config.yaml`
-- operator stop control: `/dwemr stop` terminates a long-running OpenClaw-managed DWEMR process and keeps the last saved workflow checkpoint
+- operator stop control: `/dwemr stop` cancels a long-running OpenClaw-managed DWEMR runtime owner and keeps the last saved workflow checkpoint
 - pending clarification: `/dwemr what-now` repeats the saved clarification batch instead of starting a new interview
 - clarification follow-up: `/dwemr start <response>` resumes onboarding with the saved request context
 - missing project assets: `/dwemr doctor <path>` reports the project as missing DWEMR assets
@@ -296,6 +439,7 @@ After shipping or installing a new DWEMR build, verify these flows:
 - onboarding flow: `/dwemr start <request>` can run onboarding, provision the selected profile, and continue the original command
 - release gating: `/dwemr release` and `/dwemr pr` return an explicit unavailable message when git is not enabled for the project
 - healthy Claude runtime: `/dwemr doctor <path>` confirms auth, session ensure, and a quiet prompt
+- agent policy guardrail: doctor diagnoses `claude` ACP allowlist/default-agent policy issues without auto-editing `acp.allowedAgents` or `acp.defaultAgent`
 - clean response surface: `/dwemr status` returns only the final assistant message on success
 
 ## Bundled workflow assets
@@ -389,8 +533,8 @@ Supported key:
 
 ```json
 {
-  "acpxPath": "/absolute/path/to/acpx",
-  "managedRuntimeDir": "/absolute/path/to/openclaw-state/tools/dwemr/runtime",
+  "acpAgent": "claude",
+  "acpBackend": "acpx",
   "activeProjectPath": "/absolute/path/to/project",
   "defaultProjectPath": "/absolute/path/to/project",
   "model": "sonnet",
@@ -407,9 +551,11 @@ Supported key:
 }
 ```
 
-`acpxPath` is an advanced override. When it is set, DWEMR will launch that executable directly instead of the managed runtime wrapper.
+`acpAgent` optionally overrides the ACP harness agent id used by ACP-native runs.
+If unset, DWEMR follows OpenClaw ACP defaults and ultimately falls back to
+`claude`.
 
-`managedRuntimeDir` is an advanced override for where DWEMR stores its managed runtime wrapper and metadata.
+`acpBackend` optionally overrides the ACP backend id for ACP-native runs.
 
 `model` optionally selects the Claude model for DWEMR runs. Claude Code supports aliases such as `sonnet`, `opus`, `haiku`, and `opusplan`, as well as full model names.
 
@@ -425,7 +571,15 @@ When `activeProjectPath` or `defaultProjectPath` is set, `/dwemr init` and `/dwe
 
 Current DWEMR builds persist remembered projects under the OpenClaw state directory instead of writing them into `openclaw.json` during normal command execution.
 
-DWEMR applies model-related settings through the Claude process environment. Changing `model`, `subagentModel`, or `effortLevel` creates a distinct saved Claude session automatically so new settings do not silently reuse an older session configuration.
+Runtime option notes:
+
+- `model` and `cwd` are mapped through to ACP-native session runtime options.
+- DWEMR does not currently push `timeoutSeconds` through ACP-native session
+  runtime options. Configure longer ACPX turn limits at the host level
+  instead, for example:
+  `openclaw config set plugins.entries.acpx.config.timeoutSeconds 7200`
+- `subagentModel` and `effortLevel` mapping under ACP-native is
+  backend-dependent and currently best-effort with caveats.
 
 ## Internal implementation surfaces
 

@@ -10,7 +10,7 @@ function readRelative(relativePath: string) {
   return readFileSync(path.join(projectRoot, relativePath), "utf8");
 }
 
-import { translateClaudeCommandSurface } from "../../dwemr/src/openclaw/claude-runner";
+import { translateClaudeCommandSurface } from "../../dwemr/src/openclaw/backend/claude-output";
 
 test("delivery-what-now documents checkpoint-driven reasoning and stable summary fields", () => {
   const text = readRelative("templates/.claude/commands/delivery-what-now.md");
