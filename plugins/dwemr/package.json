@@ -2,7 +2,7 @@
   "name": "dwemr",
   "version": "0.2.0",
   "type": "module",
-  "description": "DWEMR OpenClaw-to-Claude delivery bridge for project initialization, `/dwemr` routing, and Claude-native workflow execution.",
+  "description": "DWEMR OpenClaw-to-Claude delivery bridge for project initialization, `/dwemr` routing, and Claude-native workflow execution. A prompt-to-prototype workflow triggered through `/dwemr` commands.",
   "license": "MIT",
   "repository": {
     "type": "git",

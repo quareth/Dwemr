@@ -35,6 +35,25 @@ If you need runtime overrides after install, configure `plugins.entries.dwemr.co
 
 DWEMR relies on OpenClaw's ACPX runtime for Claude execution. If a fresh-machine install reports no ACPX runtime found, see the troubleshooting note in [plugins/dwemr/README.md](plugins/dwemr/README.md).
 
+## How To Use
+
+It's this simple:
+
+```text
+/dwemr init "/absolute/path/to/project"
+/dwemr start <your request>
+```
+
+That's it. DWEMR takes it from there.
+
+If you ever lose track of where you are in a run, ask DWEMR what to do next:
+
+```text
+/dwemr what-now
+```
+
+For the full command reference and advanced options, see [plugins/dwemr/README.md](plugins/dwemr/README.md).
+
 ## Before You Use It
 
 DWEMR is designed to be hands-off inside the target project, and that comes with tradeoffs.
