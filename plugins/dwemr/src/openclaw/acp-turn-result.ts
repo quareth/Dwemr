@@ -1,5 +1,5 @@
 import type { ProcessResult } from "./claude-runner";
-import { collectAcpRuntimeOutput, formatAcpLifecycleError } from "./acp-config";
+import { collectAcpRuntimeOutput, formatAcpLifecycleError } from "./acp-output";
 import { isAcpRuntimeError } from "openclaw/plugin-sdk/acp-runtime";
 
 export type AcpEventCollector = {

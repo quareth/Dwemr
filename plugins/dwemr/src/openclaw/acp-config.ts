@@ -2,7 +2,6 @@ import { createHash } from "node:crypto";
 import type { AcpRuntimeSummary, DwemrRuntimeContext, RuntimeApiLike } from "./runtime-backend-types";
 import type { DwemrRuntimeConfig } from "./runtime";
 import type { ClaudeCommandRunOptions, DwemrClaudeModelConfig } from "./claude-runner";
-import { getAcpRuntimeBackend, isAcpRuntimeError } from "openclaw/plugin-sdk/acp-runtime";
 
 export const ACP_NATIVE_BACKEND_KIND = "acp-native";
 export const ACP_DEFAULT_AGENT = "claude";
@@ -147,24 +146,3 @@ export function resolveOwnerSessionKey(context: DwemrRuntimeContext | undefined,
   return normalizeOptionalString(context?.toolContext?.sessionKey) ?? fallbackSessionKey;
 }
 
-export function collectAcpRuntimeOutput(events: Array<{ type: string; text?: string; stream?: string }>) {
-  let lastToolCallIndex = -1;
-  for (let i = events.length - 1; i >= 0; i--) {
-    if (events[i].type === "tool_call") {
-      lastToolCallIndex = i;
-      break;
-    }
-  }
-  let output = "";
-  for (let i = lastToolCallIndex + 1; i < events.length; i++) {
-    const event = events[i];
-    if (event.type === "text_delta" && event.stream !== "thought" && event.text) {
-      output += event.text;
-    }
-  }
-  return output.trim();
-}
-
-export function formatAcpLifecycleError(error: unknown) {
-  return isAcpRuntimeError(error) ? `${error.code}: ${error.message}` : String(error);
-}

@@ -12,11 +12,11 @@ import {
   ACP_NATIVE_BACKEND_KIND,
   buildAcpRuntimeSummary,
   collectAcpRuntimeOptionCaveatNotes,
-  formatAcpLifecycleError,
   resolveAcpBackendId,
   resolveAcpConfig,
   resolveOpenClawConfig,
 } from "./acp-config";
+import { formatAcpLifecycleError } from "./acp-output";
 import { getAcpRuntimeBackend, getAcpSessionManager, isAcpRuntimeError, readAcpSessionEntry } from "openclaw/plugin-sdk/acp-runtime";
 
 export const ACP_LIFECYCLE_REASONS = {

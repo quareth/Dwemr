@@ -1,6 +1,7 @@
 import type { RuntimeApiLike } from "./runtime-backend-types";
 import { isProcessRunning, killProcessWithEscalation } from "./active-runs";
-import { formatAcpLifecycleError, resolveLegacyTaskFlow } from "./acp-config";
+import { resolveLegacyTaskFlow } from "./acp-config";
+import { formatAcpLifecycleError } from "./acp-output";
 import { ACP_LIFECYCLE_REASONS, closeAcpSession } from "./acp-session-lifecycle";
 import { getAcpSessionManager } from "openclaw/plugin-sdk/acp-runtime";
 

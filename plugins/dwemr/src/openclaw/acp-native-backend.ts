@@ -21,14 +21,13 @@ import {
   buildAcpRuntimeOptionPatch,
   buildAcpSessionScopeKey,
   buildCommandScopedAcpSessionKey,
-  collectAcpRuntimeOutput,
-  formatAcpLifecycleError,
   resolveAcpAgentId,
   resolveAcpBackendId,
   resolveOwnerSessionKey,
   resolveOpenClawConfig,
   resolveRuntimeTimeoutSeconds,
 } from "./acp-config";
+import { collectAcpRuntimeOutput, formatAcpLifecycleError } from "./acp-output";
 import { type AcpFlowTracking, createAcpFlowTracking } from "./acp-flow-tracking";
 import {
   ACP_LIFECYCLE_REASONS,
