@@ -1,7 +1,7 @@
 {
   "id": "dwemr",
   "name": "Delivery Workflow Engine & Memory Relay (DWEMR)",
-  "description": "DWEMR is an OpenClaw-to-Claude delivery bridge that initializes projects, routes `/dwemr` actions, and lets Claude Code own the internal workflow.",
+  "description": "DWEMR is an OpenClaw-to-Claude delivery bridge that initializes projects, routes `/dwemr` actions, and lets Claude Code own the internal workflow. A prompt-to-prototype workflow triggered through `/dwemr` commands.",
   "version": "0.2.0",
   "skills": ["skills"],
   "uiHints": {
