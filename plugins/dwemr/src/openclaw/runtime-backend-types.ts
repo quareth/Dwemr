@@ -170,7 +170,6 @@ export type DwemrRuntimeBackend = {
   probeClaudeRuntime: (request: DwemrRuntimeProbeRequest) => Promise<ClaudeRuntimeProbe>;
   findActiveRun: (stateDir: string, projectPath: string) => Promise<DwemrActiveRun | undefined>;
   stopActiveRun: (stateDir: string, projectPath: string) => Promise<DwemrStopResult>;
-  closeStatefulSession?: (sessionKey: string) => Promise<void>;
   listSessions?: (stateDir: string) => Promise<{ sessions: DwemrSessionInfo[]; aggregate: { activeSessions: number; evictedTotal: number } }>;
   clearSessions?: (stateDir: string) => Promise<{ closed: number; failed: number }>;
 };

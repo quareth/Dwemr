@@ -1,7 +1,7 @@
 import path from "node:path";
 import type { HandlerContext, HandlerResult } from "./action-handler-types";
 import { textResult } from "./action-handler-types";
-import { buildInitHelp, buildModeHelp, buildSessionHelp, buildRunnerHelp, buildUseHelp, formatHelpText, mapActionToClaudeCommand } from "./command-routing";
+import { buildInitHelp, buildModeHelp, buildRunnerHelp, buildUseHelp, formatHelpText, mapActionToClaudeCommand } from "./command-routing";
 import { formatRunnerResult, translateClaudeCommandSurface } from "./claude-runner";
 import { formatDoctorText, preflightExecution, runDwemrDoctor } from "./doctor";
 import { getDefaultRuntimeBackend } from "./runtime-backend";
@@ -18,10 +18,8 @@ import { writeOnboardingState } from "../control-plane/onboarding-state";
 import { syncPipelineExecutionMode, readPipelineStateBrief, formatPipelineStateBrief } from "../control-plane/pipeline-state";
 import {
   normalizeExecutionModeInput,
-  normalizeSessionModeInput,
   readProjectExecutionMode,
   updateProjectExecutionMode,
-  updateProjectSessionMode,
   readProjectModelConfig,
   updateProjectModelField,
   readProjectScmConfig,
@@ -496,63 +494,6 @@ export async function handleMode(ctx: HandlerContext, tokens: string[]): Promise
   );
 }
 
-export async function handleSession(ctx: HandlerContext, tokens: string[]): Promise<HandlerResult> {
-  const sessionTokens = tokens.slice(1);
-  if (sessionTokens.length !== 1) {
-    return textResult(buildSessionHelp(ctx.defaultProjectPath));
-  }
-
-  const sessionMode = normalizeSessionModeInput(sessionTokens[0]);
-  if (!sessionMode) {
-    return textResult(`Unknown session mode: ${sessionTokens[0]}\n` + buildSessionHelp(ctx.defaultProjectPath));
-  }
-
-  const targetPath = ctx.defaultProjectPath;
-  if (!targetPath) {
-    return textResult(
-      [
-        "DWEMR cannot set a session mode yet because there is no active project.",
-        "",
-        "Run `/dwemr init <path>` or `/dwemr use <path>` first, then retry `/dwemr session <stateless|stateful>`.",
-      ].join("\n"),
-    );
-  }
-
-  if (!(await pathExists(targetPath))) {
-    return textResult(
-      [
-        `The active DWEMR project path no longer exists: ${targetPath}`,
-        "",
-        "Run `/dwemr projects` to review remembered paths, then `/dwemr use <path>` or `/dwemr init <path>` before changing session mode.",
-      ].join("\n"),
-    );
-  }
-
-  const project = await inspectProjectHealth(targetPath);
-  if (project.installState === "missing") {
-    return textResult(
-      [
-        `DWEMR cannot set session mode in ${targetPath} because this project is not initialized yet.`,
-        "",
-        `Next: run \`/dwemr init ${targetPath}\` first.`,
-      ].join("\n"),
-    );
-  }
-
-  if (project.installState === "unsupported_contract") {
-    return textResult(formatUnsupportedContract(targetPath, project, "session"));
-  }
-
-  await updateProjectSessionMode(targetPath, sessionMode);
-  await rememberProjectSelection(ctx.api, targetPath, { initialized: true, setActive: true });
-
-  return textResult(
-    sessionMode === "stateful"
-      ? `DWEMR session mode for ${targetPath} is now \`stateful\`. Onboarding will use persistent ACP sessions to maintain conversation context across clarification rounds.`
-      : `DWEMR session mode for ${targetPath} is now \`stateless\`. Each command creates a fresh ACP session.`,
-  );
-}
-
 function formatSessionState(state: string) {
   switch (state) {
     case "idle": return "idle";
@@ -598,26 +539,29 @@ export async function handleSessions(ctx: HandlerContext, tokens: string[]): Pro
     const result = await runtimeBackend.clearSessions(ctx.stateDir);
     return textResult(
       result.closed > 0 || result.failed > 0
-        ? `Cleared ${result.closed} session(s).` + (result.failed > 0 ? ` ${result.failed} failed to close.` : "")
-        : "No DWEMR sessions to clear.",
+        ? `Cleared ${result.closed} tracked DWEMR session(s).`
+          + (result.failed > 0 ? ` ${result.failed} tracked session(s) failed to close.` : "")
+          + " Unrelated ACP/ACPX sessions were not touched."
+        : "No tracked DWEMR sessions to clear. Unrelated ACP/ACPX sessions were not touched.",
     );
   }
 
   const { sessions, aggregate } = await runtimeBackend.listSessions(ctx.stateDir);
 
   const lines: string[] = [];
-  lines.push(`ACP runtime: ${aggregate.activeSessions} active session(s), ${aggregate.evictedTotal} evicted total.`);
+  lines.push(`ACP runtime cache: ${aggregate.activeSessions} active session(s), ${aggregate.evictedTotal} evicted total.`);
+  lines.push("DWEMR lists only sessions it currently tracks for DWEMR-owned runs. Unrelated ACP/ACPX sessions are not shown here.");
 
   if (sessions.length === 0) {
     lines.push("", "No tracked DWEMR sessions.");
   } else {
-    lines.push("", `DWEMR sessions (${sessions.length}):`);
+    lines.push("", `Tracked DWEMR sessions (${sessions.length}):`);
     for (const session of sessions) {
       lines.push("", formatSessionInfo(session));
     }
   }
 
-  lines.push("", "To clear all sessions: `/dwemr sessions clear`");
+  lines.push("", "To clear tracked DWEMR sessions only: `/dwemr sessions clear`");
 
   return textResult(lines.join("\n"));
 }

@@ -7,17 +7,12 @@ import { initializeProject } from "../../dwemr/src/control-plane/project-assets"
 import {
   normalizeExecutionModeInput,
   normalizeProjectSizeInput,
-  normalizeSessionModeInput,
   parseProjectExecutionMode,
   parseProjectSize,
-  parseProjectSessionMode,
   setProjectSize,
   setProjectExecutionMode,
-  setProjectSessionMode,
   updateProjectSize,
   updateProjectExecutionMode,
-  updateProjectSessionMode,
-  readProjectSessionMode,
 } from "../../dwemr/src/control-plane/project-config";
 import { syncPipelineExecutionMode } from "../../dwemr/src/control-plane/pipeline-state";
 
@@ -128,41 +123,4 @@ test("syncPipelineExecutionMode rewrites canonical pipeline execution mode", asy
   } finally {
     await sandbox.cleanup();
   }
-});
-
-test("normalizeSessionModeInput accepts stateless and stateful", () => {
-  assert.equal(normalizeSessionModeInput("stateless"), "stateless");
-  assert.equal(normalizeSessionModeInput("stateful"), "stateful");
-  assert.equal(normalizeSessionModeInput("Stateful"), "stateful");
-  assert.equal(normalizeSessionModeInput("unknown"), undefined);
-  assert.equal(normalizeSessionModeInput(""), undefined);
-  assert.equal(normalizeSessionModeInput(undefined), undefined);
-});
-
-test("project config session mode helpers read and write the runtime.session_mode field", async () => {
-  const sandbox = await makeTempProject();
-  try {
-    const configPath = path.join(sandbox.projectPath, ".dwemr/project-config.yaml");
-    const original = await readFile(configPath, "utf8");
-
-    assert.equal(parseProjectSessionMode(original), "stateless");
-
-    const updated = setProjectSessionMode(original, "stateful");
-    assert.match(updated, /session_mode: stateful/);
-    assert.equal(parseProjectSessionMode(updated), "stateful");
-
-    await updateProjectSessionMode(sandbox.projectPath, "stateful");
-    const persisted = await readFile(configPath, "utf8");
-    assert.equal(parseProjectSessionMode(persisted), "stateful");
-
-    const readMode = await readProjectSessionMode(sandbox.projectPath);
-    assert.equal(readMode, "stateful");
-  } finally {
-    await sandbox.cleanup();
-  }
-});
-
-test("readProjectSessionMode defaults to stateless for missing config", async () => {
-  const mode = await readProjectSessionMode("/nonexistent/path");
-  assert.equal(mode, "stateless");
 });

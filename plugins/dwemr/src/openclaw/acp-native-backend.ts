@@ -368,6 +368,10 @@ export function createAcpNativeRuntimeBackend(context?: DwemrRuntimeContext): Dw
       const sessionKey = `${buildAcpSessionScopeKey(request.targetPath, agentId, request.runtimeConfig)}-doctor`;
       const requestId = `dwemr-doctor-${randomUUID()}`;
       const collector = createAcpEventCollector();
+      let probeResult:
+        | { status: "ok"; detail: string; result: ProcessResult }
+        | { status: "failed"; detail: string }
+        | undefined;
 
       try {
         await initAcpOneshotSession({
@@ -387,28 +391,39 @@ export function createAcpNativeRuntimeBackend(context?: DwemrRuntimeContext): Dw
 
         const output = collectAcpRuntimeOutput(collector.events);
         if (output.trim() !== ACP_NATIVE_DOCTOR_PROMPT_EXPECTED) {
-          return {
+          probeResult = {
             status: "failed",
             detail: output || "ACP runtime returned an unexpected health-check response.",
           };
+        } else {
+          probeResult = {
+            status: "ok",
+            detail: `ACP runtime is reachable, session \`${sessionKey}\` is healthy, and a probe prompt returned \`DWEMR_READY\`.`,
+            result: {
+              exitCode: 0,
+              stdout: output,
+              stderr: "",
+              timedOut: false,
+            },
+          };
         }
-
-        return {
-          status: "ok",
-          detail: `ACP runtime is reachable, session \`${sessionKey}\` is healthy, and a probe prompt returned \`DWEMR_READY\`.`,
-          result: {
-            exitCode: 0,
-            stdout: output,
-            stderr: "",
-            timedOut: false,
-          },
-        };
       } catch (error) {
-        return {
+        probeResult = {
           status: "failed",
           detail: formatAcpLifecycleError(error),
         };
+      } finally {
+        const cleanup = await closeAcpCommandSession({ cfg, manager, sessionKey });
+        if (!cleanup.terminal && cleanup.error) {
+          probeResult = {
+            status: "failed",
+            detail: probeResult
+              ? `${probeResult.detail}\n${cleanup.error}`
+              : cleanup.error,
+          };
+        }
       }
+      return probeResult ?? { status: "failed", detail: "ACP probe finished without producing a result." };
     },
     findActiveRun(stateDir, projectPath) {
       return findAcpActiveRun(stateDir, projectPath).then((run) => {
@@ -445,23 +460,17 @@ export function createAcpNativeRuntimeBackend(context?: DwemrRuntimeContext): Dw
         if (r.outcome === "failed") errors.push(`Flow cancellation error: ${r.error}`);
       }
 
-      // Missing session context — cannot proceed with session or OS cancel
       if (!cfg || !sessionKey) {
-        await clearAcpActiveRun(stateDir, projectPath, run.identity.runId);
-        return {
-          status: "failed",
-          run,
-          error: ["ACP-native run is missing session context and cannot be cancelled cleanly.", ...errors].filter(Boolean).join(" "),
-        };
+        errors.push("ACP-native run is missing session context; runtime-level cancellation was skipped.");
+      } else {
+        // Tier 2: Try session-level cancel
+        const sessionResult = await attemptSessionCancel({ manager, cfg, sessionKey, flowCancelFailed: errors.length > 0 });
+        if (sessionResult.outcome === "stopped") {
+          await clearAcpActiveRun(stateDir, projectPath, run.identity.runId);
+          return { status: "stopped", run, mechanism: sessionResult.mechanism };
+        }
+        if (sessionResult.outcome === "failed") errors.push(`Session cancellation error: ${sessionResult.error}`);
       }
-
-      // Tier 2: Try session-level cancel
-      const sessionResult = await attemptSessionCancel({ manager, cfg, sessionKey, flowCancelFailed: errors.length > 0 });
-      if (sessionResult.outcome === "stopped") {
-        await clearAcpActiveRun(stateDir, projectPath, run.identity.runId);
-        return { status: "stopped", run, mechanism: sessionResult.mechanism };
-      }
-      if (sessionResult.outcome === "failed") errors.push(`Session cancellation error: ${sessionResult.error}`);
 
       // Tier 3: OS-level fallback
       const osResult = await attemptOsKill(resolveRunPid(run));
@@ -471,18 +480,6 @@ export function createAcpNativeRuntimeBackend(context?: DwemrRuntimeContext): Dw
       }
 
       return { status: "failed", run, error: errors.join(" ") };
-    },
-
-    async closeStatefulSession(sessionKey) {
-      const cfg = resolveOpenClawConfig(runtimeApi);
-      if (!cfg) {
-        return;
-      }
-      try {
-        await closeAcpSession(manager, cfg, sessionKey, ACP_LIFECYCLE_REASONS.onboardingComplete);
-      } catch {
-        // Best-effort cleanup of persistent session state.
-      }
     },
 
     async listSessions(stateDir) {

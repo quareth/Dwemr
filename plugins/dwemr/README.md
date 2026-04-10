@@ -102,25 +102,67 @@ openclaw plugins install dwemr
 openclaw gateway restart
 ```
 
-Then configure `plugins.entries.dwemr.config` in your OpenClaw config only if you need optional runtime overrides such as a default project path or model override.
-
-## Required ACPX Host Settings
-
-For ACP-native DWEMR runs, ACPX host config must allow unattended Claude execution.
-Set these before first use:
+For local development:
 
 ```bash
-openclaw config set plugins.entries.acpx.config.permissionMode approve-all
+openclaw plugins install -l ./plugins/dwemr
+openclaw gateway restart
+```
+
+Then configure `plugins.entries.dwemr.config` in your OpenClaw config only if you need optional runtime overrides such as a default project path or model override.
+
+## ACPX Troubleshooting
+
+DWEMR ACP-native runs are more reliable with a larger ACPX host timeout budget.
+We recommend setting this before use:
+
+```bash
 openclaw config set plugins.entries.acpx.config.timeoutSeconds 7200
 openclaw gateway restart
 ```
 
-Why this matters:
+`7200` means a 2-hour per-turn timeout. For especially long-running DWEMR sessions, you may need a higher value.
+
+You can check the current value with:
+
+```bash
+openclaw config get plugins.entries.acpx.config.timeoutSeconds
+```
+
+Reference values in current OpenClaw installs:
+
+- default: `120` seconds
+- minimum: `1` second
+- maximum: `86400` seconds
+
+Many environments work without extra ACPX permission tuning, so `permissionMode` is still conditional troubleshooting rather than a universal requirement.
+
+If you do hit ACPX-specific failures, these host-level settings are the first things to check:
+
+```bash
+openclaw config get plugins.entries.acpx.config.permissionMode
+```
+
+If you are getting ACPX permission errors in non-interactive DWEMR runs:
+
+```bash
+openclaw config set plugins.entries.acpx.config.permissionMode approve-all
+openclaw gateway restart
+```
+
+If ACPX sessions fail during longer DWEMR turns or die around a repeatable time boundary:
+
+```bash
+openclaw config set plugins.entries.acpx.config.timeoutSeconds 7200
+openclaw gateway restart
+```
+
+Why these help in some environments:
 
 - `permissionMode=approve-all` lets ACPX execute shell, edit, and write actions without interactive approval prompts
-- `timeoutSeconds=7200` avoids the runtime-option patch failure path that can break DWEMR turns during onboarding follow-up and other longer ACP-native runs
+- `timeoutSeconds=7200` gives longer ACPX turns enough host-level time budget and avoids time-bound failures we have observed in some environments
 
-These are host-level ACPX settings. Project-local `.claude/settings.json` does not replace them.
+These are ACPX host settings. Project-local `.claude/settings.json` does not replace them for ACP-native runs.
 
 ## Important Safety Note
 
@@ -128,7 +170,8 @@ DWEMR installs a project-local `.claude/settings.json` into initialized projects
 
 - Claude Code is put into `bypassPermissions` mode for that project
 - `Bash`, `Edit`, and `Write` are allowed
-- this is intentional so the bundled workflow can run unattended
+- this is intentional so the bundled workflow can run unattended inside Claude-managed project contexts
+- ACP-native runs still depend on ACPX host policy for the actual shell and file-write harness permissions
 
 Use DWEMR only in projects where that permission model is acceptable. Running it in an isolated environment is recommended.
 
@@ -164,6 +207,7 @@ Supported `/dwemr` actions:
 - `doctor [path] [--fix]`
 - `init [path] [--overwrite] [--confirm-overwrite]`
 - `mode <auto|checkpointed>`
+- `sessions [clear]`
 - `projects`
 - `use <path>`
 - `model [number|unset]`
@@ -205,20 +249,6 @@ selected runtime backend:
 - legacy backend (`spawn`): direct ACPX command execution (compatibility path)
 
 DWEMR does not emulate Claude’s internal agents. It maps the requested action to one Claude entrypoint and returns only the final assistant response on success.
-
-## Install
-
-```bash
-openclaw plugins install dwemr
-openclaw gateway restart
-```
-
-For local development:
-
-```bash
-openclaw plugins install -l ./plugins/dwemr
-openclaw gateway restart
-```
 
 ## Runtime behavior
 
@@ -295,20 +325,108 @@ Use `/dwemr mode checkpointed` when you want DWEMR to stop at major milestones a
 
 In `autonomous` mode, long-running DWEMR execution commands are allowed to keep running without the old delivery timeout. If you need to interrupt a run manually, use `/dwemr stop`.
 
+## Usage examples
+
+### 1. Initialize a project
+
+```text
+/dwemr init /absolute/path/to/my-project
+```
+
+`/dwemr init` creates the target project folder and installs the DWEMR bootstrap kit into it. In practice that means:
+
+- `CLAUDE.md`
+- `.claude/` command and agent assets
+- `.dwemr/` state, memory, reference, guide, and runbook files
+
+The initialized project becomes the active DWEMR project automatically.
+
+### 2. Work with one active project at a time
+
+DWEMR can remember multiple projects, but only one project is active at a time. When you run a `/dwemr` command without a path, DWEMR uses the active project.
+
+```text
+/dwemr projects
+/dwemr use /absolute/path/to/project-a
+/dwemr status
+/dwemr use /absolute/path/to/project-b
+/dwemr what-now
+```
+
+In that sequence, `/dwemr status` runs against `project-a`, and after switching, `/dwemr what-now` runs against `project-b`.
+
+### 3. Start work and continue onboarding
+
+```text
+/dwemr start Build me a simple calculator app
+/dwemr start 1: personal calculator 2A 3A 4B 5A 6A 7A
+```
+
+The first `/dwemr start` begins onboarding or delivery. If DWEMR returns one clarification batch, answer it with another `/dwemr start <response>`.
+
+### 4. Ask DWEMR what to do next
+
+```text
+/dwemr what-now
+```
+
+`/dwemr what-now` is guidance-only. It does not start a new run by itself. It reads DWEMR state, summarizes the current situation, and points you to the safest next public command. If onboarding is waiting on clarification, it repeats the saved clarification instead of starting over.
+
+### 5. Tune model, subagent model, and effort
+
+```text
+/dwemr model
+/dwemr model 2
+/dwemr subagents
+/dwemr subagents 1
+/dwemr effort
+/dwemr effort 3
+/dwemr effort unset
+```
+
+These commands are project-scoped. Running `/dwemr model`, `/dwemr subagents`, or `/dwemr effort` with no value shows the numbered choices for the active project. Then you can select by number or clear the override with `unset`.
+
+### 6. Check live progress and stop a run
+
+```text
+/dwemr status
+/dwemr stop
+```
+
+`/dwemr status` shows the current delivery state for the active project without changing it. If a long-running DWEMR execution is in flight, `/dwemr stop` cancels the active OpenClaw-managed runtime owner and keeps the saved workflow state so you can resume later.
+
+### 7. Inspect or clear tracked DWEMR ACP sessions
+
+```text
+/dwemr sessions
+/dwemr sessions clear
+```
+
+Use `/dwemr sessions` to list only the ACP sessions DWEMR currently tracks for DWEMR-owned runs. This is especially useful when checking for stale or hung ACP-native DWEMR activity. Use `/dwemr sessions clear` to close only those tracked DWEMR sessions. It does not close unrelated ACP or ACPX sessions owned by other tools. Session listing and clearing are available only with the ACP-native runtime backend.
+
+### 8. Change execution mode
+
+```text
+/dwemr mode checkpointed
+/dwemr mode auto
+```
+
+`/dwemr mode` controls whether DWEMR keeps going until blocked (`auto`) or pauses at major milestones (`checkpointed`). 
+
 ## Doctor and self-heal
 
 `/dwemr doctor [path]` reports:
 
 - whether the selected runtime backend is ready
 - ACP-native seam availability (`tasks.flows` required, `taskFlow` compatibility)
-- whether ACPX host permission config matches DWEMR's ACP-native automation requirements
+- whether ACPX host timeout and permission config look healthy for DWEMR's ACP-native automation path
 - legacy ACPX compatibility diagnostics when spawn compatibility is in use
 - whether the target project exists
 - whether the project is missing DWEMR assets, bootstrap-only, or fully profile-installed
 - whether onboarding is pending, waiting on clarification, or complete
 - whether the configured runtime can execute a DWEMR health-check prompt
 
-`/dwemr doctor [path] --fix` now previews ACPX permission repair when ACP-native automation is blocked. It explains the root cause and prints exactly two follow-up commands:
+`/dwemr doctor [path] --fix` now previews ACPX host repair when ACP-native automation is blocked. It explains the root cause and prints exactly two follow-up commands:
 
 - `/dwemr doctor [path] --fix --restart`
 - `/dwemr doctor [path] --fix --no-restart`
@@ -321,6 +439,8 @@ In `autonomous` mode, long-running DWEMR execution commands are allowed to keep 
 - repair `plugins.entries.acpx.config.nonInteractivePermissions` to `fail`
 - install missing DWEMR bootstrap assets without requiring a separate shell setup step
 - finish profile provisioning only when onboarding has already selected a profile
+
+Doctor also reports ACPX timeout guidance when it detects repeatable time-bound turn failures, but timeout changes remain host-level troubleshooting rather than an automatic `--fix` mutation.
 
 For ACP-native runs, ACPX owns shell and file-write permissions. `.claude/settings.json` and Claude CLI bypass flags do not override ACPX harness policy. When doctor repairs ACPX permission config with `--restart`, it inspects `gateway.reload.mode` and tells you whether OpenClaw should apply the restart path automatically or whether a manual restart is still required.
 

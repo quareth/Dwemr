@@ -28,10 +28,10 @@ test("bootstrap Claude settings enable unattended headless DWEMR execution", () 
   assert.match(text, /"allow": \["Bash", "Edit", "Write"\]/);
 });
 
-test("project config template defaults session_mode to stateless", () => {
+test("project config template no longer exposes a runtime session_mode setting", () => {
   const text = readRelative("templates/.dwemr/project-config.yaml");
 
-  assert.match(text, /session_mode:\s*stateless/);
+  assert.doesNotMatch(text, /session_mode:/);
 });
 
 test("bootstrap pack ships delivery-driver and no longer treats delivery-onboard as a bootstrap command", () => {

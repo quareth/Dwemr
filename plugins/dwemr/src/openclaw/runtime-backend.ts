@@ -15,7 +15,7 @@ export type {
   DwemrSessionInfo,
   DwemrRuntimeBackend,
 } from "./runtime-backend-types";
-export { buildOnboardingPersistentSessionKey, buildAcpRuntimeOptionPatch } from "./acp-config";
+export { buildAcpRuntimeOptionPatch } from "./acp-config";
 
 const runtimeBackendRegistry = new Map<string, RuntimeBackendFactory>();
 

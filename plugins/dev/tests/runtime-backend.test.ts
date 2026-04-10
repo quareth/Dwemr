@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import test from "node:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { AcpRuntimeError, __testing as acpRuntimeTesting } from "../../dwemr/node_modules/openclaw/dist/plugin-sdk/acp-runtime.js";
-import { findActiveRun, registerActiveRun } from "../../dwemr/src/openclaw/active-runs";
+import { findActiveRun, isProcessRunning, registerActiveRun } from "../../dwemr/src/openclaw/active-runs";
 import { getDefaultRuntimeBackend, setRuntimeBackendOverride } from "../../dwemr/src/openclaw/runtime-backend";
 
 function sleep(ms: number) {
@@ -418,6 +419,182 @@ test("ACP-native timeout errors map to timedOut process results", async () => {
   }
 });
 
+test("ACP-native probe closes its one-shot session after a successful turn", async () => {
+  resetRuntimeHarness();
+  registerFakeAcpBackend();
+
+  const closeCalls: Array<{ sessionKey: string; reason: string; clearMeta?: boolean; discardPersistentState?: boolean }> = [];
+  let sessionState: "ready" | "none" = "ready";
+  acpRuntimeTesting.setAcpSessionManagerForTests({
+    async initializeSession() {
+      return;
+    },
+    async updateSessionRuntimeOptions() {
+      return;
+    },
+    async runTurn(params: {
+      onEvent?: (event: { type: string; text?: string; stream?: string }) => void | Promise<void>;
+    }) {
+      await params.onEvent?.({ type: "text_delta", stream: "output", text: "DWEMR_READY" });
+      await params.onEvent?.({ type: "done" });
+    },
+    async cancelSession() {
+      return;
+    },
+    async closeSession(params: { sessionKey: string; reason: string; clearMeta?: boolean; discardPersistentState?: boolean }) {
+      closeCalls.push(params);
+      sessionState = "none";
+      return { runtimeClosed: true, metaCleared: true };
+    },
+    resolveSession(params: { sessionKey: string }) {
+      if (sessionState === "none") {
+        return { kind: "none", sessionKey: params.sessionKey };
+      }
+      return {
+        kind: "ready",
+        sessionKey: params.sessionKey,
+        meta: {
+          state: "running",
+          mode: "oneshot",
+          agent: "claude",
+          backend: "test-acp",
+          runtimeOptions: {},
+          capabilities: {},
+          lastActivityAt: Date.now(),
+        },
+      };
+    },
+  });
+
+  const backend = getDefaultRuntimeBackend({
+    preferredKind: "acp-native",
+    runtimeContext: { api: buildRuntimeApi({ backendId: "test-acp" }) },
+  });
+
+  try {
+    const result = await backend.probeClaudeRuntime({
+      targetPath: "/tmp/dwemr-acp-probe-cleanup",
+      project: {
+        targetPath: "/tmp/dwemr-acp-probe-cleanup",
+        exists: true,
+        installState: "bootstrap_only",
+        onboardingState: {
+          contractVersion: 4,
+          status: "pending",
+          entryAction: "start",
+          requestContext: "",
+          clarificationSummary: "",
+          clarificationQuestions: [],
+          clarificationResponse: "",
+          selectedProfile: undefined,
+          planningMode: undefined,
+          docsMode: undefined,
+          qaMode: undefined,
+          needsProductFraming: false,
+          selectedPacks: [],
+          requiredArtifacts: [],
+          installStage: "bootstrap_pending",
+          updatedAt: new Date().toISOString(),
+        },
+        expectedPacks: [],
+        missingFiles: [],
+        contractIssues: [],
+      },
+    });
+
+    assert.equal(result.status, "ok");
+    assert.equal(closeCalls.length, 1);
+    assert.equal(closeCalls[0]?.reason, "dwemr-command-cleanup");
+    assert.equal(closeCalls[0]?.clearMeta, true);
+    assert.equal(closeCalls[0]?.discardPersistentState, true);
+  } finally {
+    resetRuntimeHarness();
+  }
+});
+
+test("ACP-native probe reports cleanup failures instead of silently leaking sessions", async () => {
+  resetRuntimeHarness();
+  registerFakeAcpBackend();
+
+  acpRuntimeTesting.setAcpSessionManagerForTests({
+    async initializeSession() {
+      return;
+    },
+    async updateSessionRuntimeOptions() {
+      return;
+    },
+    async runTurn(params: {
+      onEvent?: (event: { type: string; text?: string; stream?: string }) => void | Promise<void>;
+    }) {
+      await params.onEvent?.({ type: "text_delta", stream: "output", text: "DWEMR_READY" });
+      await params.onEvent?.({ type: "done" });
+    },
+    async cancelSession() {
+      return;
+    },
+    async closeSession() {
+      throw new AcpRuntimeError("ACP_CLOSE_FAILED", "cleanup close failed");
+    },
+    resolveSession(params: { sessionKey: string }) {
+      return {
+        kind: "ready",
+        sessionKey: params.sessionKey,
+        meta: {
+          state: "running",
+          mode: "oneshot",
+          agent: "claude",
+          backend: "test-acp",
+          runtimeOptions: {},
+          capabilities: {},
+          lastActivityAt: Date.now(),
+        },
+      };
+    },
+  });
+
+  const backend = getDefaultRuntimeBackend({
+    preferredKind: "acp-native",
+    runtimeContext: { api: buildRuntimeApi({ backendId: "test-acp" }) },
+  });
+
+  try {
+    const result = await backend.probeClaudeRuntime({
+      targetPath: "/tmp/dwemr-acp-probe-cleanup-failure",
+      project: {
+        targetPath: "/tmp/dwemr-acp-probe-cleanup-failure",
+        exists: true,
+        installState: "bootstrap_only",
+        onboardingState: {
+          contractVersion: 4,
+          status: "pending",
+          entryAction: "start",
+          requestContext: "",
+          clarificationSummary: "",
+          clarificationQuestions: [],
+          clarificationResponse: "",
+          selectedProfile: undefined,
+          planningMode: undefined,
+          docsMode: undefined,
+          qaMode: undefined,
+          needsProductFraming: false,
+          selectedPacks: [],
+          requiredArtifacts: [],
+          installStage: "bootstrap_pending",
+          updatedAt: new Date().toISOString(),
+        },
+        expectedPacks: [],
+        missingFiles: [],
+        contractIssues: [],
+      },
+    });
+
+    assert.equal(result.status, "failed");
+    assert.match(result.detail, /ACP_CLOSE_FAILED/);
+  } finally {
+    resetRuntimeHarness();
+  }
+});
+
 test("ACP-native pre-turn initialization failures do not create flow/task ledger entries", async () => {
   resetRuntimeHarness();
   registerFakeAcpBackend();
@@ -575,6 +752,53 @@ test("ACP-native stop cancels session using childSessionKey", async () => {
     const activeRun = await findActiveRun(stateDir, targetPath, { backendKind: "acp-native" });
     assert.equal(activeRun, undefined);
   } finally {
+    await rm(stateDir, { recursive: true, force: true });
+    resetRuntimeHarness();
+  }
+});
+
+test("ACP-native stop falls back to OS kill when session metadata is degraded", async () => {
+  resetRuntimeHarness();
+
+  const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
+    stdio: "ignore",
+  });
+
+  const stateDir = await mkdtemp(path.join(os.tmpdir(), "dwemr-runtime-backend-test-"));
+  const targetPath = path.join(stateDir, "project");
+  const backend = getDefaultRuntimeBackend({
+    preferredKind: "acp-native",
+    runtimeContext: { api: undefined },
+  });
+
+  try {
+    assert.ok(child.pid);
+    await registerActiveRun(stateDir, {
+      projectPath: targetPath,
+      startedAt: new Date().toISOString(),
+      action: "continue",
+      claudeCommand: "/delivery-continue",
+      pid: child.pid,
+      identity: {
+        backendKind: "acp-native",
+        runId: "dwemr-stop-degraded-metadata",
+        pid: child.pid,
+      },
+    });
+
+    const stopResult = await backend.stopActiveRun(stateDir, targetPath);
+    assert.equal(stopResult.status, "stopped");
+    assert.equal(stopResult.mechanism.kind, "signal");
+
+    for (let attempt = 0; attempt < 20 && isProcessRunning(child.pid); attempt += 1) {
+      await sleep(50);
+    }
+    assert.equal(isProcessRunning(child.pid), false);
+
+    const activeRun = await findActiveRun(stateDir, targetPath, { backendKind: "acp-native" });
+    assert.equal(activeRun, undefined);
+  } finally {
+    child.kill("SIGKILL");
     await rm(stateDir, { recursive: true, force: true });
     resetRuntimeHarness();
   }

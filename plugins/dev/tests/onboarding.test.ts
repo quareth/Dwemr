@@ -114,44 +114,26 @@ test("prepareOnboardingStateForEntry preserves the original request when answeri
   assert.equal(prepared.clarificationResponse, "It should stay a bounded internal tool.");
 });
 
-test("normalizeOnboardingState preserves acpSessionKey during awaiting_clarification and clears on complete or pending", () => {
-  const awaiting = normalizeOnboardingState({
-    status: "pending",
-    requestContext: "Build a tool.",
-    clarificationSummary: "Need one answer.",
-    clarificationQuestions: ["What kind?"],
-    acpSessionKey: "agent:claude:acp:dwemr-abc123:onboarding",
-  });
-  assert.equal(awaiting.status, "awaiting_clarification");
-  assert.equal(awaiting.acpSessionKey, "agent:claude:acp:dwemr-abc123:onboarding");
+test("onboarding state parser ignores legacy acp_session_key and formatter does not re-emit it", () => {
+  const parsed = parseOnboardingState([
+    "---",
+    'dwemr_contract_version: 4',
+    'status: "pending"',
+    'request_context: "Build a tool."',
+    'clarification_summary: "Need one answer."',
+    'clarification_questions: ["What kind?"]',
+    'acp_session_key: "agent:claude:acp:dwemr-abc123:onboarding"',
+    'updated_at: "2026-01-01T00:00:00.000Z"',
+    "---",
+    "",
+    "# Onboarding state",
+    "",
+  ].join("\n"));
 
-  const complete = normalizeOnboardingState({
-    status: "pending",
-    selectedProfile: "minimal_tool",
-    acpSessionKey: "agent:claude:acp:dwemr-abc123:onboarding",
-  });
-  assert.equal(complete.status, "complete");
-  assert.equal(complete.acpSessionKey, "");
+  assert.equal(parsed.status, "awaiting_clarification");
 
-  const pending = normalizeOnboardingState({
-    status: "pending",
-    requestContext: "Build a tool.",
-    acpSessionKey: "agent:claude:acp:dwemr-abc123:onboarding",
-  });
-  assert.equal(pending.status, "pending");
-  assert.equal(pending.acpSessionKey, "");
-});
-
-test("onboarding state serialization round-trips acpSessionKey", () => {
-  const state = normalizeOnboardingState({
-    status: "pending",
-    requestContext: "Build a tool.",
-    clarificationSummary: "Need one answer.",
-    clarificationQuestions: ["What kind?"],
-    acpSessionKey: "agent:claude:acp:dwemr-abc123:onboarding",
-  });
-  const serialized = formatOnboardingState(state);
-  assert.match(serialized, /acp_session_key: "agent:claude:acp:dwemr-abc123:onboarding"/);
+  const serialized = formatOnboardingState(parsed);
+  assert.doesNotMatch(serialized, /acp_session_key:/);
 });
 
 test("formatBootstrapPendingStatus points pending clarification back to start", () => {

@@ -104,13 +104,6 @@ export function buildCommandScopedAcpSessionKey(
   return `${scopeKey}:run-${runSuffix}`;
 }
 
-export function buildOnboardingPersistentSessionKey(
-  targetPath: string,
-  runtimeConfig?: DwemrRuntimeConfig & DwemrClaudeModelConfig,
-) {
-  return buildAcpSessionScopeKey(targetPath, resolveAcpAgentId(undefined, runtimeConfig), runtimeConfig) + ":onboarding";
-}
-
 export function resolveRuntimeTimeoutSeconds(options: ClaudeCommandRunOptions | undefined) {
   if (options?.timeoutMs === null) {
     return undefined;
