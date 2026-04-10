@@ -19,14 +19,13 @@ import {
   ACP_NATIVE_BACKEND_KIND,
   asRuntimeApi,
   buildAcpRuntimeOptionPatch,
-  buildAcpSessionScopeKey,
-  buildCommandScopedAcpSessionKey,
   resolveAcpAgentId,
   resolveAcpBackendId,
   resolveOwnerSessionKey,
   resolveOpenClawConfig,
   resolveRuntimeTimeoutSeconds,
 } from "./acp-config";
+import { buildAcpSessionScopeKey, buildCommandScopedAcpSessionKey } from "./acp-keys";
 import { collectAcpRuntimeOutput, formatAcpLifecycleError } from "./acp-output";
 import { type AcpFlowTracking, createAcpFlowTracking } from "./acp-flow-tracking";
 import {
