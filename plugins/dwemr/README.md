@@ -104,6 +104,24 @@ openclaw gateway restart
 
 Then configure `plugins.entries.dwemr.config` in your OpenClaw config only if you need optional runtime overrides such as a default project path or model override.
 
+## Required ACPX Host Settings
+
+For ACP-native DWEMR runs, ACPX host config must allow unattended Claude execution.
+Set these before first use:
+
+```bash
+openclaw config set plugins.entries.acpx.config.permissionMode approve-all
+openclaw config set plugins.entries.acpx.config.timeoutSeconds 7200
+openclaw gateway restart
+```
+
+Why this matters:
+
+- `permissionMode=approve-all` lets ACPX execute shell, edit, and write actions without interactive approval prompts
+- `timeoutSeconds=7200` avoids the runtime-option patch failure path that can break DWEMR turns during onboarding follow-up and other longer ACP-native runs
+
+These are host-level ACPX settings. Project-local `.claude/settings.json` does not replace them.
+
 ## Important Safety Note
 
 DWEMR installs a project-local `.claude/settings.json` into initialized projects.
@@ -480,8 +498,9 @@ Runtime option notes:
 
 - `model` is mapped in both `acp-native` and `spawn` backends.
 - `cwd` is mapped in both `acp-native` and `spawn` backends.
-- timeout behavior maps to ACP-native `timeoutSeconds`; `timeoutMs: null`
-  keeps the ACP runtime timeout unset so autonomous runs remain unbounded.
+- DWEMR does not currently push `timeoutSeconds` through ACP-native session runtime options.
+  Configure longer ACPX turn limits at the host level instead, for example:
+  `openclaw config set plugins.entries.acpx.config.timeoutSeconds 7200`
 - `subagentModel` and `effortLevel` are fully preserved in `spawn`; ACP-native
   mapping is backend-dependent and currently best-effort with caveats.
 

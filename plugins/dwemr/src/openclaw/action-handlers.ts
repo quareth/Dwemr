@@ -4,7 +4,8 @@ import { textResult } from "./action-handler-types";
 import { buildInitHelp, buildModeHelp, buildSessionHelp, buildRunnerHelp, buildUseHelp, formatHelpText, mapActionToClaudeCommand } from "./command-routing";
 import { formatRunnerResult, translateClaudeCommandSurface } from "./claude-runner";
 import { formatDoctorText, preflightExecution, runDwemrDoctor } from "./doctor";
-import { getDefaultRuntimeBackend, type DwemrRuntimeBackend, type DwemrSessionInfo } from "./runtime-backend";
+import { getDefaultRuntimeBackend } from "./runtime-backend";
+import type { DwemrRuntimeBackend, DwemrSessionInfo } from "./runtime-backend-types";
 import {
   formatBootstrapPendingStatus,
   formatOnboardingBlocked,

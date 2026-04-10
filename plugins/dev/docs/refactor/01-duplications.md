@@ -1,6 +1,6 @@
 # runtime-backend.ts — Duplications
 
-Catalog of duplicated code in `plugins/dwemr/src/openclaw/runtime-backend.ts` that should be consolidated during refactor. Zero behavior change — only shape.
+Catalog of duplicated code from the original `plugins/dwemr/src/openclaw/runtime-backend.ts` that was consolidated during the module extraction refactor. All items resolved — see `03-extraction-points.md` for the extraction plan.
 
 ---
 
@@ -179,11 +179,13 @@ function createAcpNativeRuntimeBackend(context?: DwemrRuntimeContext): DwemrRunt
 
 ## Summary
 
-| ID | Duplication | Occurrences | Effort |
-|---|---|---|---|
-| D1 | `formatAcpLifecycleError` not used | 2 manual copies | Trivial |
-| D2 | `asRuntimeApi` re-resolved | 3 redundant calls | Trivial |
-| D3 | `clearActiveRun` boilerplate | 5-6 call sites | Small helper |
-| D4 | Session init sequence | 2 methods | Small helper |
-| D5 | Event collector callback | 2 methods | Small helper |
-| D6 | `getAcpSessionManager()` uncached | 7 calls | Trivial |
+All items resolved.
+
+| ID | Duplication | Status |
+|---|---|---|
+| D1 | `formatAcpLifecycleError` not used | **Resolved** — all call sites use the helper (now in `acp-config.ts`) |
+| D2 | `asRuntimeApi` re-resolved | **Resolved** — cached in factory closure (`acp-native-backend.ts`) |
+| D3 | `clearActiveRun` boilerplate | **Resolved** — `clearAcpActiveRun` helper in `acp-native-backend.ts` |
+| D4 | Session init sequence | **Resolved** — `initAcpOneshotSession` in `acp-native-backend.ts` |
+| D5 | Event collector callback | **Resolved** — `createAcpEventCollector` in `acp-native-backend.ts` |
+| D6 | `getAcpSessionManager()` uncached | **Resolved** — cached as `manager` in factory closure (`acp-native-backend.ts`) |

@@ -5,7 +5,8 @@ import type { ClaudeRuntimeProbe } from "./claude-runner";
 import type { DwemrPluginConfig } from "./project-selection";
 import { DWEMR_CONTRACT_VERSION } from "../control-plane/state-contract";
 import type { DwemrRuntimeInspection } from "./runtime";
-import { getDefaultRuntimeBackend, type DwemrRuntimeBackend, type DwemrRuntimeState } from "./runtime-backend";
+import { getDefaultRuntimeBackend } from "./runtime-backend";
+import type { DwemrRuntimeBackend, DwemrRuntimeState } from "./runtime-backend-types";
 
 export type DwemrDoctorFixMode = "inspect" | "preview" | "apply";
 export type DwemrDoctorRestartBehavior = "restart" | "no-restart";
@@ -22,6 +23,7 @@ export type DwemrDoctorAcpxPermissionRepair = {
   enabled?: boolean;
   permissionMode?: string;
   nonInteractivePermissions?: string;
+  timeoutSeconds?: number;
   reloadMode: DwemrReloadMode;
   needsRepair: boolean;
   previewed: boolean;
@@ -71,6 +73,19 @@ function normalizeReloadMode(value: unknown): DwemrReloadMode {
   return normalized ? "unknown" : "hybrid";
 }
 
+function normalizeOptionalPositiveNumber(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    return value;
+  }
+  if (typeof value === "string") {
+    const parsed = Number(value.trim());
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+  return undefined;
+}
+
 function resolveRuntimeConfigApi(api: unknown): RuntimeConfigApi | undefined {
   const candidate = isRecord(api) ? api.runtime : undefined;
   if (!isRecord(candidate)) {
@@ -94,6 +109,13 @@ function isAcpNativePermissionFailure(detail: string | undefined) {
 function isClaudeAgentPolicyFailure(detail: string | undefined) {
   const text = detail?.toLowerCase() ?? "";
   return text.includes("agent") && text.includes("claude") && text.includes("not allowed by policy");
+}
+
+function isAcpRuntimeOptionSetupFailure(detail: string | undefined) {
+  const text = detail?.toLowerCase() ?? "";
+  return text.includes("could not apply acp runtime options before turn execution")
+    || text.includes("session/set_config_option")
+    || text.includes("runtime options");
 }
 
 function getShellInspection(runtime: DwemrRuntimeState) {
@@ -310,6 +332,7 @@ async function inspectAcpxPermissionRepair(
     const acpxConfig = cloneRecord(acpx.config);
     const permissionMode = normalizeOptionalString(acpxConfig.permissionMode);
     const nonInteractivePermissions = normalizeOptionalString(acpxConfig.nonInteractivePermissions);
+    const timeoutSeconds = normalizeOptionalPositiveNumber(acpxConfig.timeoutSeconds);
     const reloadMode = normalizeReloadMode(cloneRecord(config.gateway).reload && cloneRecord(cloneRecord(config.gateway).reload).mode);
 
     return {
@@ -320,6 +343,7 @@ async function inspectAcpxPermissionRepair(
         enabled: acpx.enabled !== false,
         permissionMode,
         nonInteractivePermissions,
+        timeoutSeconds,
         reloadMode,
         needsRepair: permissionMode !== "approve-all" || nonInteractivePermissions !== "fail",
         previewed: false,
@@ -442,6 +466,7 @@ export function formatDoctorText(report: DwemrDoctorReport, pluginConfig: DwemrP
     lines.push("", "ACPX permissions:");
     lines.push(`- permissionMode: ${report.acpxPermissionRepair.permissionMode ?? "not set"}`);
     lines.push(`- nonInteractivePermissions: ${report.acpxPermissionRepair.nonInteractivePermissions ?? "not set"}`);
+    lines.push(`- timeoutSeconds: ${report.acpxPermissionRepair.timeoutSeconds ?? "not set"}`);
     lines.push(`- Gateway reload mode: ${report.acpxPermissionRepair.reloadMode}`);
   }
 
@@ -510,6 +535,17 @@ export function formatDoctorText(report: DwemrDoctorReport, pluginConfig: DwemrP
       lines.push("- Run `/dwemr init <path>` first to initialize and select a project, then retry your DWEMR command.");
     }
     if (report.claudeProbe.status === "failed") {
+      const permissionIssue = isAcpNativePermissionFailure(report.claudeProbe.detail);
+      const runtimeOptionIssue = isAcpRuntimeOptionSetupFailure(report.claudeProbe.detail);
+      const permissionUnset = report.acpxPermissionRepair?.permissionMode !== "approve-all";
+      const timeoutTooLowOrMissing = !report.acpxPermissionRepair?.timeoutSeconds || report.acpxPermissionRepair.timeoutSeconds < 7200;
+
+      if (permissionIssue || permissionUnset) {
+        lines.push("- If you are seeing ACPX permission errors, run `openclaw config set plugins.entries.acpx.config.permissionMode approve-all` and restart the OpenClaw gateway.");
+      }
+      if (runtimeOptionIssue || timeoutTooLowOrMissing) {
+        lines.push("- If ACPX sessions fail during longer DWEMR turns or die around a repeatable time boundary, run `openclaw config set plugins.entries.acpx.config.timeoutSeconds 7200` and restart the OpenClaw gateway.");
+      }
       lines.push("- Run `claude auth status` in your shell and re-authenticate Claude Code if needed.");
     }
   }

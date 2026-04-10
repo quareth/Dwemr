@@ -6,7 +6,8 @@ import { formatBootstrapPendingStatus, prepareOnboardingStateForEntry } from "..
 import { formatOnboardingState, normalizeOnboardingState, parseOnboardingState } from "../../dwemr/src/control-plane/onboarding-state";
 import type { DwemrPluginConfig } from "../../dwemr/src/openclaw/project-selection";
 import type { DwemrRuntimeInspection } from "../../dwemr/src/openclaw/runtime";
-import { buildAcpRuntimeOptionPatch, type DwemrRuntimeState } from "../../dwemr/src/openclaw/runtime-backend";
+import { buildAcpRuntimeOptionPatch } from "../../dwemr/src/openclaw/acp-config";
+import type { DwemrRuntimeState } from "../../dwemr/src/openclaw/runtime-backend-types";
 import { DWEMR_CONTRACT_VERSION } from "../../dwemr/src/control-plane/state-contract";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -298,13 +299,49 @@ test("formatDoctorText no-extension ACPX guidance does not mention PATH fallback
   assert.doesNotMatch(text, /PATH-based `acpx` executable/);
 });
 
-test("buildAcpRuntimeOptionPatch keeps only model, cwd, and timeout for ACP-native sessions", () => {
+test("formatDoctorText suggests ACPX permission and timeout host settings when probe fails", () => {
+  const text = formatDoctorText(
+    {
+      runtime: runtimeState,
+      runtimeReady: true,
+      runtimeLedgerNotes: [],
+      project: buildProjectHealth(),
+      fixApplied: false,
+      fixMode: "inspect",
+      fixNotes: [],
+      previewNotes: [],
+      automationNotes: [],
+      claudeProbe: { status: "failed", detail: "ACP_TURN_FAILED: Could not apply ACP runtime options before turn execution." },
+      acpxPermissionRepair: {
+        applicable: true,
+        configAccess: "available",
+        permissionMode: undefined,
+        nonInteractivePermissions: undefined,
+        timeoutSeconds: undefined,
+        reloadMode: "hybrid",
+        needsRepair: true,
+        previewed: false,
+        attempted: false,
+        changed: false,
+        restartExpected: false,
+        manualRestartRequired: false,
+      },
+    },
+    {} satisfies DwemrPluginConfig,
+    undefined,
+  );
+
+  assert.match(text, /If you are seeing ACPX permission errors, run `openclaw config set plugins\.entries\.acpx\.config\.permissionMode approve-all` and restart the OpenClaw gateway\./);
+  assert.match(text, /If ACPX sessions fail during longer DWEMR turns or die around a repeatable time boundary, run `openclaw config set plugins\.entries\.acpx\.config\.timeoutSeconds 7200` and restart the OpenClaw gateway\./);
+  assert.match(text, /timeoutSeconds: not set/);
+});
+
+test("buildAcpRuntimeOptionPatch keeps only model and cwd for ACP-native sessions", () => {
   const patch = buildAcpRuntimeOptionPatch("/tmp/dwemr-project", { model: "claude-sonnet-4-6" }, 60);
 
   assert.deepEqual(patch, {
     model: "claude-sonnet-4-6",
     cwd: "/tmp/dwemr-project",
-    timeoutSeconds: 60,
   });
   assert.ok(!("permissionProfile" in patch));
 });

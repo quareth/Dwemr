@@ -21,7 +21,7 @@ import { initializeProject, provisionProjectProfile } from "../../dwemr/src/cont
 import { updateProjectExecutionMode } from "../../dwemr/src/control-plane/project-config";
 import { writeOnboardingState } from "../../dwemr/src/control-plane/onboarding-state";
 import { DWEMR_CONTRACT_VERSION } from "../../dwemr/src/control-plane/state-contract";
-import type { DwemrRuntimeBackend, DwemrRuntimeState } from "../../dwemr/src/openclaw/runtime-backend";
+import type { DwemrRuntimeBackend, DwemrRuntimeState } from "../../dwemr/src/openclaw/runtime-backend-types";
 import { makeFakeApiContext, type FakeApiContext } from "./fixtures/fake-api";
 
 async function makeTempProject() {
