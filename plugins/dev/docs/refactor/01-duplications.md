@@ -1,6 +1,6 @@
 # runtime-backend.ts — Duplications
 
-Catalog of duplicated code from the original `plugins/dwemr/src/openclaw/runtime-backend.ts` that was consolidated during the module extraction refactor. All items resolved — see `03-extraction-points.md` for the extraction plan.
+Catalog of duplicated code from the original `plugins/dwemr/src/openclaw/backend/runtime-backend.ts` that was consolidated during the module extraction refactor. All items resolved — see `03-extraction-points.md` for the extraction plan.
 
 ---
 

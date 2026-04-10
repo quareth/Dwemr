@@ -1,5 +1,5 @@
 import { AcpRuntimeError, __testing as acpRuntimeTesting } from "../../../dwemr/node_modules/openclaw/dist/plugin-sdk/acp-runtime.js";
-import { setRuntimeBackendOverride } from "../../../dwemr/src/openclaw/runtime-backend";
+import { setRuntimeBackendOverride } from "../../../dwemr/src/openclaw/backend/runtime-backend";
 
 export { AcpRuntimeError, acpRuntimeTesting };
 

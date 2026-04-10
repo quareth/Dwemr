@@ -12,7 +12,7 @@ keeping the legacy spawn backend available as a compatibility path.
 
 Implemented in:
 
-- `plugins/dwemr/src/openclaw/runtime-backend.ts`
+- `plugins/dwemr/src/openclaw/backend/runtime-backend.ts`
 
 Added backend:
 
@@ -30,8 +30,8 @@ No plugin-owned `child_process` seam is used in this backend.
 
 Implemented in:
 
-- `plugins/dwemr/src/openclaw/runtime-backend.ts`
-- `plugins/dwemr/src/openclaw/action-handlers.ts`
+- `plugins/dwemr/src/openclaw/backend/runtime-backend.ts`
+- `plugins/dwemr/src/openclaw/cli/action-handlers.ts`
 
 Behavior:
 
@@ -46,7 +46,7 @@ This keeps rollout incremental while making ACP-native execution usable now.
 
 Implemented in:
 
-- `plugins/dwemr/src/openclaw/runtime-backend.ts`
+- `plugins/dwemr/src/openclaw/backend/runtime-backend.ts`
 
 Behavior:
 
@@ -60,7 +60,7 @@ Behavior:
 
 Implemented in:
 
-- `plugins/dwemr/src/openclaw/runtime-backend.ts`
+- `plugins/dwemr/src/openclaw/backend/runtime-backend.ts`
 
 Behavior:
 
@@ -74,7 +74,7 @@ Behavior:
 
 Implemented in:
 
-- `plugins/dwemr/src/openclaw/runtime-backend.ts`
+- `plugins/dwemr/src/openclaw/backend/runtime-backend.ts`
 
 Current ACP-native mapping:
 
@@ -96,14 +96,14 @@ Implemented in active run records for ACP-native turns:
 
 Code path:
 
-- `plugins/dwemr/src/openclaw/runtime-backend.ts`
-- persisted through `plugins/dwemr/src/openclaw/active-runs.ts`
+- `plugins/dwemr/src/openclaw/backend/runtime-backend.ts`
+- persisted through `plugins/dwemr/src/openclaw/state/active-runs.ts`
 
 ## 7. Task/flow orchestration seam usage
 
 Implemented in:
 
-- `plugins/dwemr/src/openclaw/runtime-backend.ts`
+- `plugins/dwemr/src/openclaw/backend/runtime-backend.ts`
 
 Behavior:
 

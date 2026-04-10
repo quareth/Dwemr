@@ -1,4 +1,4 @@
-import type { RuntimeApiLike } from "./runtime-backend-types";
+import type { RuntimeApiLike } from "../runtime-backend-types";
 import { resolveRuntimeTasksFlows, resolveLegacyTaskFlow } from "./acp-config";
 
 export type AcpFlowTracking = {

@@ -6,17 +6,17 @@ import {
   registerActiveRun,
   snapshotChildPids,
   type DwemrActiveRun,
-} from "./active-runs";
-import type { DwemrProcessResult } from "./claude-runner";
-import type { DwemrRuntimeConfig } from "./runtime";
-import type { DwemrClaudeModelConfig } from "./claude-runner";
+} from "../../state/active-runs";
+import type { DwemrProcessResult } from "../claude-runner";
+import type { DwemrRuntimeConfig } from "../runtime";
+import type { DwemrClaudeModelConfig } from "../claude-runner";
 import type {
   DwemrRunCommandRequest,
   DwemrRuntimeBackend,
   DwemrRuntimeContext,
   DwemrSessionInfo,
   RuntimeApiLike,
-} from "./runtime-backend-types";
+} from "../runtime-backend-types";
 import {
   ACP_NATIVE_BACKEND_KIND,
   asRuntimeApi,

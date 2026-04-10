@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { HandlerContext } from "../../../dwemr/src/openclaw/action-handler-types";
+import type { HandlerContext } from "../../../dwemr/src/openclaw/cli/action-handler-types";
 
 export type FakeApiContext = HandlerContext & {
   cleanup: () => Promise<void>;

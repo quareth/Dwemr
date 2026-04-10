@@ -27,7 +27,7 @@ shell/PID assumptions.
 
 Implemented in:
 
-- `plugins/dwemr/src/openclaw/runtime.ts`
+- `plugins/dwemr/src/openclaw/backend/runtime.ts`
 
 Changes:
 
@@ -52,7 +52,7 @@ Changes:
 
 Implemented in:
 
-- `plugins/dwemr/src/openclaw/runtime-backend.ts`
+- `plugins/dwemr/src/openclaw/backend/runtime-backend.ts`
 
 Changes:
 

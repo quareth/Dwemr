@@ -4,8 +4,8 @@ import {
   resolveCwdForPid,
   snapshotChildPids,
   type DwemrActiveRun,
-} from "./active-runs";
-import type { RuntimeApiLike } from "./runtime-backend-types";
+} from "../../state/active-runs";
+import type { RuntimeApiLike } from "../runtime-backend-types";
 import { ACP_NATIVE_BACKEND_KIND, resolveOpenClawConfig } from "./acp-config";
 import { formatAcpLifecycleError } from "./acp-output";
 import { getAcpSessionManager, readAcpSessionEntry } from "openclaw/plugin-sdk/acp-runtime";

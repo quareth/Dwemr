@@ -21,7 +21,7 @@ import { ensureManagedDwemrRuntime, inspectDwemrRuntime } from "./runtime";
 import {
   findActiveRun as findStoredActiveRun,
   stopActiveRun as stopStoredSpawnRun,
-} from "./active-runs";
+} from "../state/active-runs";
 import {
   probeClaudeRuntime as probeSpawnClaudeRuntime,
   runClaudeCommand as runSpawnClaudeCommand,

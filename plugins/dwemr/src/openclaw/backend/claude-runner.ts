@@ -17,8 +17,8 @@
 // spawn fallback in `runtime-backend.ts` is ever removed, this whole stub block
 // can go with it.
 
-import type { DwemrExecutionMode } from "../control-plane/project-config";
-import type { ProjectHealth } from "../control-plane/project-assets";
+import type { DwemrExecutionMode } from "../../control-plane/project-config";
+import type { ProjectHealth } from "../../control-plane/project-assets";
 
 export type DwemrProcessResult = {
   exitCode: number;

@@ -5,7 +5,7 @@ import {
   buildSuccessResult,
   buildTurnEventHandler,
   createAcpEventCollector,
-} from "../../dwemr/src/openclaw/acp-turn-result";
+} from "../../dwemr/src/openclaw/backend/acp-native/acp-turn-result";
 import { AcpRuntimeError } from "./fixtures/acp-runtime-fakes";
 
 test("createAcpEventCollector stores normalized events with text and stream fields", () => {

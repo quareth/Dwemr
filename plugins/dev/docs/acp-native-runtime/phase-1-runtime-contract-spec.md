@@ -12,15 +12,15 @@ This spec is implementation-facing and code-anchored to the current DWEMR runtim
 
 | Responsibility | Current implementation | Current user-facing effect |
 | --- | --- | --- |
-| Runtime discovery/bootstrap | `src/openclaw/runtime.ts` (`inspectDwemrRuntime`, `ensureManagedDwemrRuntime`) | `/dwemr doctor` reports managed runtime, ACPX discovery state, and can self-heal wrapper bootstrap. |
-| Command execution | `src/openclaw/claude-runner.ts` (`runClaudeCommand`, `runTrackedClaudeProcess`) | Routed `/dwemr` actions execute one quiet Claude command and return final assistant text or formatted failure. |
-| Session creation | `src/openclaw/claude-runner.ts` (`ensureClaudeSessionNamed`) | Each routed command ensures a Claude session before execution. |
-| Run tracking | `src/openclaw/active-runs.ts` (`registerActiveRun`, `clearActiveRun`, `findActiveRun`) | Active run for a project is tracked by PID and shown in status/stop surfaces. |
-| Stop behavior | `src/openclaw/active-runs.ts` (`stopActiveRun`) and `src/openclaw/action-handlers.ts` (`handleStop`) | `/dwemr stop` sends SIGTERM/SIGKILL to tracked PID and preserves DWEMR state files. |
-| Doctor behavior | `src/openclaw/doctor.ts` (`runDwemrDoctor`, `formatDoctorText`) | `/dwemr doctor [--fix]` validates runtime/project health and offers repair guidance. |
-| Runtime preflight gate | `src/openclaw/doctor.ts` (`preflightExecution`) | Routed commands fail early with actionable diagnostics if runtime/project is not ready. |
-| Command routing boundary | `src/openclaw/action-handlers.ts` + `src/openclaw/command-routing.ts` | Public `/dwemr` command semantics remain deterministic and stable. |
-| Runtime option injection | `src/openclaw/claude-runner.ts` (`buildProcessEnv`) + `src/control-plane/project-config.ts` reads via handlers | Model/subagent/effort options influence Claude process environment and session naming. |
+| Runtime discovery/bootstrap | `src/openclaw/backend/runtime.ts` (`inspectDwemrRuntime`, `ensureManagedDwemrRuntime`) | `/dwemr doctor` reports managed runtime, ACPX discovery state, and can self-heal wrapper bootstrap. |
+| Command execution | `src/openclaw/backend/claude-runner.ts` (`runClaudeCommand`, `runTrackedClaudeProcess`) | Routed `/dwemr` actions execute one quiet Claude command and return final assistant text or formatted failure. |
+| Session creation | `src/openclaw/backend/claude-runner.ts` (`ensureClaudeSessionNamed`) | Each routed command ensures a Claude session before execution. |
+| Run tracking | `src/openclaw/state/active-runs.ts` (`registerActiveRun`, `clearActiveRun`, `findActiveRun`) | Active run for a project is tracked by PID and shown in status/stop surfaces. |
+| Stop behavior | `src/openclaw/state/active-runs.ts` (`stopActiveRun`) and `src/openclaw/cli/action-handlers.ts` (`handleStop`) | `/dwemr stop` sends SIGTERM/SIGKILL to tracked PID and preserves DWEMR state files. |
+| Doctor behavior | `src/openclaw/diagnostics/doctor.ts` (`runDwemrDoctor`, `formatDoctorText`) | `/dwemr doctor [--fix]` validates runtime/project health and offers repair guidance. |
+| Runtime preflight gate | `src/openclaw/diagnostics/doctor.ts` (`preflightExecution`) | Routed commands fail early with actionable diagnostics if runtime/project is not ready. |
+| Command routing boundary | `src/openclaw/cli/action-handlers.ts` + `src/openclaw/cli/command-routing.ts` | Public `/dwemr` command semantics remain deterministic and stable. |
+| Runtime option injection | `src/openclaw/backend/claude-runner.ts` (`buildProcessEnv`) + `src/control-plane/project-config.ts` reads via handlers | Model/subagent/effort options influence Claude process environment and session naming. |
 
 ## Contract Boundary
 

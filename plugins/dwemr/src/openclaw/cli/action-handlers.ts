@@ -2,10 +2,10 @@ import path from "node:path";
 import type { HandlerContext, HandlerResult } from "./action-handler-types";
 import { textResult } from "./action-handler-types";
 import { buildInitHelp, buildModeHelp, buildRunnerHelp, buildUseHelp, formatHelpText, mapActionToClaudeCommand } from "./command-routing";
-import { formatRunnerResult, translateClaudeCommandSurface } from "./claude-runner";
-import { formatDoctorText, preflightExecution, runDwemrDoctor } from "./doctor";
-import { getDefaultRuntimeBackend } from "./runtime-backend";
-import type { DwemrRuntimeBackend, DwemrSessionInfo } from "./runtime-backend-types";
+import { formatRunnerResult, translateClaudeCommandSurface } from "../backend/claude-runner";
+import { formatDoctorText, preflightExecution, runDwemrDoctor } from "../diagnostics/doctor";
+import { getDefaultRuntimeBackend } from "../backend/runtime-backend";
+import type { DwemrRuntimeBackend, DwemrSessionInfo } from "../backend/runtime-backend-types";
 import {
   formatBootstrapPendingStatus,
   formatOnboardingBlocked,
@@ -13,9 +13,9 @@ import {
   formatProjectUseStatus,
   formatUnsupportedContract,
   prepareOnboardingStateForEntry,
-} from "../control-plane/onboarding-flow";
-import { writeOnboardingState } from "../control-plane/onboarding-state";
-import { syncPipelineExecutionMode, readPipelineStateBrief, formatPipelineStateBrief } from "../control-plane/pipeline-state";
+} from "../../control-plane/onboarding-flow";
+import { writeOnboardingState } from "../../control-plane/onboarding-state";
+import { syncPipelineExecutionMode, readPipelineStateBrief, formatPipelineStateBrief } from "../../control-plane/pipeline-state";
 import {
   normalizeExecutionModeInput,
   readProjectExecutionMode,
@@ -26,9 +26,9 @@ import {
   isGitEnabled,
   disableProjectGit,
   type DwemrExecutionMode,
-} from "../control-plane/project-config";
-import { formatOverwriteConfirmation, initializeProject, inspectProjectHealth, pathExists, provisionProjectProfile, validateInitTargetPath } from "../control-plane/project-assets";
-import { formatProjectsText, getPluginConfig, rememberProjectSelection } from "./project-selection";
+} from "../../control-plane/project-config";
+import { formatOverwriteConfirmation, initializeProject, inspectProjectHealth, pathExists, provisionProjectProfile, validateInitTargetPath } from "../../control-plane/project-assets";
+import { formatProjectsText, getPluginConfig, rememberProjectSelection } from "../state/project-selection";
 
 // ── Constants ──────────────────────────────────────────────────────────
 

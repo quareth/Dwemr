@@ -1,6 +1,6 @@
-import type { AcpRuntimeSummary, DwemrRuntimeContext, RuntimeApiLike } from "./runtime-backend-types";
-import type { DwemrRuntimeConfig } from "./runtime";
-import type { DwemrClaudeModelConfig } from "./claude-runner";
+import type { AcpRuntimeSummary, DwemrRuntimeContext, RuntimeApiLike } from "../runtime-backend-types";
+import type { DwemrRuntimeConfig } from "../runtime";
+import type { DwemrClaudeModelConfig } from "../claude-runner";
 
 export const ACP_NATIVE_BACKEND_KIND = "acp-native";
 export const ACP_DEFAULT_AGENT = "claude";

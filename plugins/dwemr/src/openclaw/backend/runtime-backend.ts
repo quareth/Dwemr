@@ -1,9 +1,9 @@
 import type { DwemrRuntimeConfig } from "./runtime";
 import type { DwemrRuntimeContext, RuntimeBackendFactory } from "./runtime-backend-types";
-import { ACP_NATIVE_BACKEND_KIND, asRuntimeApi, normalizeOptionalString } from "./acp-config";
-import { isAcpRuntimeReady } from "./acp-readiness";
+import { ACP_NATIVE_BACKEND_KIND, asRuntimeApi, normalizeOptionalString } from "./acp-native/acp-config";
+import { isAcpRuntimeReady } from "./acp-native/acp-readiness";
 import { createSpawnRuntimeBackend } from "./spawn-backend";
-import { createAcpNativeRuntimeBackend } from "./acp-native-backend";
+import { createAcpNativeRuntimeBackend } from "./acp-native/acp-native-backend";
 
 export type {
   DwemrRuntimeToolContext,
@@ -15,7 +15,7 @@ export type {
   DwemrSessionInfo,
   DwemrRuntimeBackend,
 } from "./runtime-backend-types";
-export { buildAcpRuntimeOptionPatch } from "./acp-config";
+export { buildAcpRuntimeOptionPatch } from "./acp-native/acp-config";
 
 const runtimeBackendRegistry = new Map<string, RuntimeBackendFactory>();
 

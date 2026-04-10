@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
-import type { DwemrExecutionMode } from "../control-plane/project-config";
+import type { DwemrExecutionMode } from "../../control-plane/project-config";
 
 const execFileAsync = promisify(execFile);
 

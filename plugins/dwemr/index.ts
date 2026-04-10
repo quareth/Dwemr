@@ -1,7 +1,7 @@
 import path from "node:path";
 import { definePluginEntry, type OpenClawPluginApi, type OpenClawPluginToolContext } from "openclaw/plugin-sdk/plugin-entry";
-import { tokenizeRawArgs } from "./src/openclaw/command-routing";
-import { textResult, type HandlerContext } from "./src/openclaw/action-handler-types";
+import { tokenizeRawArgs } from "./src/openclaw/cli/command-routing";
+import { textResult, type HandlerContext } from "./src/openclaw/cli/action-handler-types";
 import {
   handleEmptyCommand,
   handleHelp,
@@ -15,9 +15,9 @@ import {
   handleModelConfig,
   handleGit,
   handleGenericRouted,
-} from "./src/openclaw/action-handlers";
+} from "./src/openclaw/cli/action-handlers";
 import { formatOverwriteConfirmation, initializeProject, validateInitTargetPath } from "./src/control-plane/project-assets";
-import { getDefaultProjectPath, getPluginConfig, rememberProjectSelection } from "./src/openclaw/project-selection";
+import { getDefaultProjectPath, getPluginConfig, rememberProjectSelection } from "./src/openclaw/state/project-selection";
 
 type RawCommandParams = {
   command?: string;

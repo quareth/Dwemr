@@ -1,6 +1,6 @@
 # runtime-backend.ts — Poor Code Quality
 
-Issues from the original `plugins/dwemr/src/openclaw/runtime-backend.ts` that were addressed during the module extraction refactor. All items resolved — code now lives in focused modules per `03-extraction-points.md`.
+Issues from the original `plugins/dwemr/src/openclaw/backend/runtime-backend.ts` that were addressed during the module extraction refactor. All items resolved — code now lives in focused modules per `03-extraction-points.md`.
 
 ---
 

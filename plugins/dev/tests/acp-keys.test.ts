@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildAcpSessionKey } from "../../dwemr/src/openclaw/acp-keys";
+import { buildAcpSessionKey } from "../../dwemr/src/openclaw/backend/acp-native/acp-keys";
 
 test("buildAcpSessionKey scope kind returns base key with no suffix", () => {
   const key = buildAcpSessionKey({

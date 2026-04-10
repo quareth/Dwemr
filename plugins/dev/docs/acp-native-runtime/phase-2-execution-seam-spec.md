@@ -12,7 +12,7 @@ Current behavior is preserved through a legacy spawn adapter.
 
 Implemented in:
 
-- `plugins/dwemr/src/openclaw/runtime-backend.ts`
+- `plugins/dwemr/src/openclaw/backend/runtime-backend.ts`
 
 This introduces `DwemrRuntimeBackend` with backend-neutral operations for:
 
@@ -27,7 +27,7 @@ This introduces `DwemrRuntimeBackend` with backend-neutral operations for:
 
 Implemented in:
 
-- `plugins/dwemr/src/openclaw/runtime-backend.ts`
+- `plugins/dwemr/src/openclaw/backend/runtime-backend.ts`
 
 `getDefaultRuntimeBackend()` returns the current spawn-based adapter (`kind: "spawn"`), wrapping:
 
@@ -43,7 +43,7 @@ This preserves current behavior while making backend replacement additive for Ph
 
 Updated:
 
-- `plugins/dwemr/src/openclaw/action-handlers.ts`
+- `plugins/dwemr/src/openclaw/cli/action-handlers.ts`
 
 Changes:
 
@@ -57,7 +57,7 @@ Changes:
 
 Updated:
 
-- `plugins/dwemr/src/openclaw/doctor.ts`
+- `plugins/dwemr/src/openclaw/diagnostics/doctor.ts`
 
 Changes:
 
@@ -69,7 +69,7 @@ Changes:
 
 Updated:
 
-- `plugins/dwemr/src/openclaw/active-runs.ts`
+- `plugins/dwemr/src/openclaw/state/active-runs.ts`
 
 Added:
 

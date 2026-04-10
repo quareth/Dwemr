@@ -9,8 +9,8 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import { attemptFlowCancel, attemptOsKill, attemptSessionCancel } from "../../dwemr/src/openclaw/acp-stop";
-import type { RuntimeApiLike } from "../../dwemr/src/openclaw/runtime-backend-types";
+import { attemptFlowCancel, attemptOsKill, attemptSessionCancel } from "../../dwemr/src/openclaw/backend/acp-native/acp-stop";
+import type { RuntimeApiLike } from "../../dwemr/src/openclaw/backend/runtime-backend-types";
 import { AcpRuntimeError } from "./fixtures/acp-runtime-fakes";
 
 const cfg: Record<string, unknown> = { stub: true };

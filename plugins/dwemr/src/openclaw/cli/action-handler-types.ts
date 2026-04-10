@@ -1,5 +1,5 @@
-import type { DwemrPluginConfig } from "./project-selection";
-import type { DwemrRuntimeBackend, DwemrRuntimeContext } from "./runtime-backend-types";
+import type { DwemrPluginConfig } from "../state/project-selection";
+import type { DwemrRuntimeBackend, DwemrRuntimeContext } from "../backend/runtime-backend-types";
 
 export type HandlerContext = {
   pluginConfig: DwemrPluginConfig;

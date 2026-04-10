@@ -1,6 +1,6 @@
-import type { DwemrRuntimeConfig } from "./runtime";
-import type { DwemrClaudeModelConfig } from "./claude-runner";
-import type { DwemrRuntimeState, RuntimeApiLike } from "./runtime-backend-types";
+import type { DwemrRuntimeConfig } from "../runtime";
+import type { DwemrClaudeModelConfig } from "../claude-runner";
+import type { DwemrRuntimeState, RuntimeApiLike } from "../runtime-backend-types";
 import {
   ACP_NATIVE_BACKEND_KIND,
   buildAcpRuntimeSummary,

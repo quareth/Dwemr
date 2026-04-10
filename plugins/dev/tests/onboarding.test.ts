@@ -1,17 +1,17 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
-import { formatDoctorText } from "../../dwemr/src/openclaw/doctor";
+import { formatDoctorText } from "../../dwemr/src/openclaw/diagnostics/doctor";
 import { formatBootstrapPendingStatus, prepareOnboardingStateForEntry } from "../../dwemr/src/control-plane/onboarding-flow";
 import { formatOnboardingState, normalizeOnboardingState, parseOnboardingState } from "../../dwemr/src/control-plane/onboarding-state";
-import type { DwemrPluginConfig } from "../../dwemr/src/openclaw/project-selection";
-import type { DwemrRuntimeInspection } from "../../dwemr/src/openclaw/runtime";
-import { buildAcpRuntimeOptionPatch } from "../../dwemr/src/openclaw/acp-config";
-import type { DwemrRuntimeState } from "../../dwemr/src/openclaw/runtime-backend-types";
+import type { DwemrPluginConfig } from "../../dwemr/src/openclaw/state/project-selection";
+import type { DwemrRuntimeInspection } from "../../dwemr/src/openclaw/backend/runtime";
+import { buildAcpRuntimeOptionPatch } from "../../dwemr/src/openclaw/backend/acp-native/acp-config";
+import type { DwemrRuntimeState } from "../../dwemr/src/openclaw/backend/runtime-backend-types";
 import { DWEMR_CONTRACT_VERSION } from "../../dwemr/src/control-plane/state-contract";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { translateClaudeCommandSurface } from "../../dwemr/src/openclaw/claude-runner";
+import { translateClaudeCommandSurface } from "../../dwemr/src/openclaw/backend/claude-runner";
 import { buildProjectHealth } from "./fixtures/builders";
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../dwemr");

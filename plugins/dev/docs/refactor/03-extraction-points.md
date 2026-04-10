@@ -1,6 +1,6 @@
 # runtime-backend.ts — Extraction Points (COMPLETED)
 
-Module extraction plan for `plugins/dwemr/src/openclaw/runtime-backend.ts` (1331 lines → 53 lines). All phases complete. Zero behavior change — only file boundaries moved.
+Module extraction plan for `plugins/dwemr/src/openclaw/backend/runtime-backend.ts` (1331 lines → 53 lines). All phases complete. Zero behavior change — only file boundaries moved.
 
 **Status:** All 6 extractions completed. Residual `runtime-backend.ts` is 53 lines.
 
@@ -8,7 +8,7 @@ Module extraction plan for `plugins/dwemr/src/openclaw/runtime-backend.ts` (1331
 - Flow-related types (`FlowRevision`, `BoundFlowViews`, `BoundTaskFlow`, etc.) were placed in E1 (`runtime-backend-types.ts`) instead of E3 to avoid circular type dependencies between E1 and E3.
 - `reconcileTrackedAcpRun` (E4) calls `clearActiveRun` from `./active-runs` directly instead of using `clearAcpActiveRun` (E6), avoiding a circular dependency between E4 and E6.
 
-Original file: `plugins/dwemr/src/openclaw/runtime-backend.ts`
+Original file: `plugins/dwemr/src/openclaw/backend/runtime-backend.ts`
 Final size: 53 lines (registry + re-exports)
 
 ---

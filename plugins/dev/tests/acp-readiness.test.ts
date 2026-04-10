@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { isAcpRuntimeReady } from "../../dwemr/src/openclaw/acp-readiness";
-import type { RuntimeApiLike } from "../../dwemr/src/openclaw/runtime-backend-types";
+import { isAcpRuntimeReady } from "../../dwemr/src/openclaw/backend/acp-native/acp-readiness";
+import type { RuntimeApiLike } from "../../dwemr/src/openclaw/backend/runtime-backend-types";
 import {
   buildRuntimeApi,
   registerFakeAcpBackend,

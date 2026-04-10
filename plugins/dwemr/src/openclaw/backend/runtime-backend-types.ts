@@ -1,7 +1,7 @@
-import type { DwemrActiveRun } from "./active-runs";
+import type { DwemrActiveRun } from "../state/active-runs";
 import type { ClaudeCommandRunOptions, DwemrClaudeRuntimeProbe, DwemrClaudeModelConfig, DwemrProcessResult } from "./claude-runner";
 import type { DwemrRuntimeConfig, DwemrRuntimeInspection } from "./runtime";
-import type { ProjectHealth } from "../control-plane/project-assets";
+import type { ProjectHealth } from "../../control-plane/project-assets";
 
 // Naming convention for backend types in this module and its siblings:
 //   `Dwemr*` prefix → public DWEMR backend contract. These types appear in

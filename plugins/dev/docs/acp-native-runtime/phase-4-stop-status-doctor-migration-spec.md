@@ -14,8 +14,8 @@ runtime-owner based (`acp-native`) for stop/status/doctor behavior.
 
 Implemented in:
 
-- `plugins/dwemr/src/openclaw/runtime-backend.ts`
-- `plugins/dwemr/src/openclaw/action-handlers.ts`
+- `plugins/dwemr/src/openclaw/backend/runtime-backend.ts`
+- `plugins/dwemr/src/openclaw/cli/action-handlers.ts`
 
 Behavior:
 
@@ -30,8 +30,8 @@ Behavior:
 
 Implemented in:
 
-- `plugins/dwemr/src/openclaw/active-runs.ts`
-- `plugins/dwemr/src/openclaw/runtime-backend.ts`
+- `plugins/dwemr/src/openclaw/state/active-runs.ts`
+- `plugins/dwemr/src/openclaw/backend/runtime-backend.ts`
 
 Behavior:
 
@@ -48,7 +48,7 @@ Behavior:
 
 Implemented in:
 
-- `plugins/dwemr/src/openclaw/action-handlers.ts`
+- `plugins/dwemr/src/openclaw/cli/action-handlers.ts`
 - `plugins/dwemr/src/control-plane/pipeline-state.ts`
 
 Behavior:
@@ -64,7 +64,7 @@ Behavior:
 
 Implemented in:
 
-- `plugins/dwemr/src/openclaw/doctor.ts`
+- `plugins/dwemr/src/openclaw/diagnostics/doctor.ts`
 
 Behavior:
 
@@ -82,7 +82,7 @@ Behavior:
 Implemented in:
 
 - `plugins/dwemr/README.md`
-- `plugins/dwemr/src/openclaw/action-handlers.ts`
+- `plugins/dwemr/src/openclaw/cli/action-handlers.ts`
 
 Behavior:
 

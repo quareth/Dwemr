@@ -1,12 +1,12 @@
-import { hasSavedClarificationBatch } from "../control-plane/onboarding-state";
-import { inspectProjectHealth, provisionProjectProfile, repairBootstrapAssets, type ProjectHealth } from "../control-plane/project-assets";
-import { readPipelineStateBrief } from "../control-plane/pipeline-state";
-import type { DwemrClaudeRuntimeProbe } from "./claude-runner";
-import type { DwemrPluginConfig } from "./project-selection";
-import { DWEMR_CONTRACT_VERSION } from "../control-plane/state-contract";
-import type { DwemrRuntimeInspection } from "./runtime";
-import { getDefaultRuntimeBackend } from "./runtime-backend";
-import type { DwemrRuntimeBackend, DwemrRuntimeState } from "./runtime-backend-types";
+import { hasSavedClarificationBatch } from "../../control-plane/onboarding-state";
+import { inspectProjectHealth, provisionProjectProfile, repairBootstrapAssets, type ProjectHealth } from "../../control-plane/project-assets";
+import { readPipelineStateBrief } from "../../control-plane/pipeline-state";
+import type { DwemrClaudeRuntimeProbe } from "../backend/claude-runner";
+import type { DwemrPluginConfig } from "../state/project-selection";
+import { DWEMR_CONTRACT_VERSION } from "../../control-plane/state-contract";
+import type { DwemrRuntimeInspection } from "../backend/runtime";
+import { getDefaultRuntimeBackend } from "../backend/runtime-backend";
+import type { DwemrRuntimeBackend, DwemrRuntimeState } from "../backend/runtime-backend-types";
 
 export type DwemrDoctorFixMode = "inspect" | "preview" | "apply";
 export type DwemrDoctorRestartBehavior = "restart" | "no-restart";

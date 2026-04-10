@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { collectAcpRuntimeOutput, formatAcpLifecycleError } from "../../dwemr/src/openclaw/acp-output";
+import { collectAcpRuntimeOutput, formatAcpLifecycleError } from "../../dwemr/src/openclaw/backend/acp-native/acp-output";
 import { AcpRuntimeError } from "./fixtures/acp-runtime-fakes";
 
 test("collectAcpRuntimeOutput returns text deltas after the last tool_call, trimmed", () => {

@@ -11,8 +11,8 @@ import {
   registerFakeAcpBackend,
   resetRuntimeHarness,
 } from "./fixtures/acp-runtime-fakes";
-import { findActiveRun, isProcessRunning, registerActiveRun } from "../../dwemr/src/openclaw/active-runs";
-import { getDefaultRuntimeBackend } from "../../dwemr/src/openclaw/runtime-backend";
+import { findActiveRun, isProcessRunning, registerActiveRun } from "../../dwemr/src/openclaw/state/active-runs";
+import { getDefaultRuntimeBackend } from "../../dwemr/src/openclaw/backend/runtime-backend";
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));

@@ -1,5 +1,5 @@
-import type { RuntimeApiLike } from "./runtime-backend-types";
-import { isProcessRunning, killProcessWithEscalation } from "./active-runs";
+import type { RuntimeApiLike } from "../runtime-backend-types";
+import { isProcessRunning, killProcessWithEscalation } from "../../state/active-runs";
 import { resolveLegacyTaskFlow } from "./acp-config";
 import { formatAcpLifecycleError } from "./acp-output";
 import { ACP_LIFECYCLE_REASONS, closeAcpSession } from "./acp-session-lifecycle";
