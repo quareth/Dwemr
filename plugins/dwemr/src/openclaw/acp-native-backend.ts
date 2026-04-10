@@ -104,6 +104,20 @@ function clearAcpActiveRun(stateDir: string, projectPath: string, runId: string)
   return clearActiveRun(stateDir, projectPath, { runId, backendKind: ACP_NATIVE_BACKEND_KIND });
 }
 
+function uniqueRunsByChildSessionKey(
+  runs: DwemrActiveRun[],
+): Array<{ run: DwemrActiveRun; key: string }> {
+  const seen = new Set<string>();
+  const result: Array<{ run: DwemrActiveRun; key: string }> = [];
+  for (const run of runs) {
+    const key = run.identity.childSessionKey;
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    result.push({ run, key });
+  }
+  return result;
+}
+
 type RunAcpClaudeCommandDeps = {
   request: DwemrRunCommandRequest;
   runtimeApi: RuntimeApiLike | undefined;
@@ -356,7 +370,6 @@ export function createAcpNativeRuntimeBackend(context?: DwemrRuntimeContext): Dw
     async listSessions(stateDir) {
       const cfg = resolveOpenClawConfig(runtimeApi);
       const sessions: DwemrSessionInfo[] = [];
-      const seenKeys = new Set<string>();
 
       // Collect session keys from active runs
       const trackedRuns = await loadAcpActiveRuns(stateDir);
@@ -372,11 +385,7 @@ export function createAcpNativeRuntimeBackend(context?: DwemrRuntimeContext): Dw
           runs.push(reconciled);
         }
       }
-      for (const run of runs) {
-        const key = run.identity.childSessionKey;
-        if (!key || seenKeys.has(key)) continue;
-        seenKeys.add(key);
-
+      for (const { run, key } of uniqueRunsByChildSessionKey(runs)) {
         const info: DwemrSessionInfo = {
           sessionKey: key,
           state: "none",
@@ -421,13 +430,8 @@ export function createAcpNativeRuntimeBackend(context?: DwemrRuntimeContext): Dw
       let failed = 0;
 
       const runs = await loadAcpActiveRuns(stateDir);
-      const seenKeys = new Set<string>();
 
-      for (const run of runs) {
-        const key = run.identity.childSessionKey;
-        if (!key || seenKeys.has(key)) continue;
-        seenKeys.add(key);
-
+      for (const { run, key } of uniqueRunsByChildSessionKey(runs)) {
         let sessionClosed = false;
         if (cfg) {
           try {
