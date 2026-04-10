@@ -384,7 +384,7 @@ Use `/dwemr sessions` to list only the ACP sessions DWEMR currently tracks for D
 /dwemr mode auto
 ```
 
-`/dwemr mode` controls whether DWEMR keeps going until blocked (`auto`) or pauses at major milestones (`checkpointed`). 
+`/dwemr mode` controls whether DWEMR keeps going until blocked (`auto`) or pauses at major milestones (`checkpointed`).
 
 ## Doctor and self-heal
 

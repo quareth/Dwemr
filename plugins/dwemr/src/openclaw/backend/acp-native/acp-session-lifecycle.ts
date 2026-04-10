@@ -144,4 +144,3 @@ export async function reconcileTrackedAcpRun(params: {
   await clearActiveRun(params.stateDir, params.projectPath, { runId: params.run.identity.runId, backendKind: ACP_NATIVE_BACKEND_KIND });
   return undefined;
 }
-

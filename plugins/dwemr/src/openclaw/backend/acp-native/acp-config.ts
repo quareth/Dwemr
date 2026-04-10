@@ -108,4 +108,3 @@ export function buildAcpRuntimeOptionPatch(
 export function resolveOwnerSessionKey(context: DwemrRuntimeContext | undefined, fallbackSessionKey: string) {
   return normalizeOptionalString(context?.toolContext?.sessionKey) ?? fallbackSessionKey;
 }
-

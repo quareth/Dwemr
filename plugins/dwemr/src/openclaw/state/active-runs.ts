@@ -341,4 +341,3 @@ export async function updateActiveRunPid(stateDir: string, projectPath: string, 
   }
   await writeActiveRuns(stateDir, existing);
 }
-

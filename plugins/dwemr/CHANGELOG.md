@@ -73,8 +73,6 @@ referenced them are removed.
   When ACP-native runtime prerequisites are missing, it still returns a
   non-ready backend object so `/dwemr help` and `/dwemr doctor` continue
   to work for diagnostics.
-- Bootstrap pack no longer ships a local `.claude/settings.json` into target
-  projects. Templates and `.gitignore` are updated to match.
 
 ### Removed
 
@@ -101,8 +99,6 @@ referenced them are removed.
 - Legacy ACP-native phase 1–4 runtime specification documents under
   `plugins/dev/docs/` after the migration to ACP-native controls
   completed.
-- The bundled `.claude/settings.json` previously installed by the
-  bootstrap pack.
 
 ### Migration notes
 
