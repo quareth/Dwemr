@@ -1,6 +1,6 @@
 import type { AcpRuntimeSummary, DwemrRuntimeContext, RuntimeApiLike } from "./runtime-backend-types";
 import type { DwemrRuntimeConfig } from "./runtime";
-import type { ClaudeCommandRunOptions, DwemrClaudeModelConfig } from "./claude-runner";
+import type { DwemrClaudeModelConfig } from "./claude-runner";
 
 export const ACP_NATIVE_BACKEND_KIND = "acp-native";
 export const ACP_DEFAULT_AGENT = "claude";
@@ -30,8 +30,14 @@ export function normalizeAcpAgentId(agent: string | undefined) {
   return normalized || ACP_DEFAULT_AGENT;
 }
 
-export function resolveOpenClawConfig(runtimeApi: RuntimeApiLike | undefined) {
-  return runtimeApi?.config && typeof runtimeApi.config === "object" ? runtimeApi.config : undefined;
+export function resolveOpenClawConfig(
+  runtimeApi: RuntimeApiLike | undefined,
+): Record<string, unknown> | undefined {
+  const candidate = runtimeApi?.config;
+  if (!candidate || typeof candidate !== "object") {
+    return undefined;
+  }
+  return candidate as Record<string, unknown>;
 }
 
 export function resolveAcpConfig(runtimeApi: RuntimeApiLike | undefined) {
@@ -79,16 +85,6 @@ export function buildAcpRuntimeSummary(runtimeApi: RuntimeApiLike | undefined, r
   };
 }
 
-export function resolveRuntimeTimeoutSeconds(options: ClaudeCommandRunOptions | undefined) {
-  if (options?.timeoutMs === null) {
-    return undefined;
-  }
-  if (typeof options?.timeoutMs === "number" && Number.isFinite(options.timeoutMs) && options.timeoutMs > 0) {
-    return Math.max(1, Math.round(options.timeoutMs / 1000));
-  }
-  return undefined;
-}
-
 export function collectAcpRuntimeOptionCaveatNotes(runtimeConfig: (DwemrRuntimeConfig & DwemrClaudeModelConfig) | undefined) {
   const notes: string[] = [];
   if (runtimeConfig?.acpxPath?.trim()) {
@@ -109,9 +105,7 @@ export function collectAcpRuntimeOptionCaveatNotes(runtimeConfig: (DwemrRuntimeC
 export function buildAcpRuntimeOptionPatch(
   targetPath: string,
   runtimeConfig: (DwemrRuntimeConfig & DwemrClaudeModelConfig) | undefined,
-  timeoutSeconds: number | undefined,
 ) {
-  void timeoutSeconds;
   return {
     model: runtimeConfig?.model?.trim() || undefined,
     cwd: targetPath,

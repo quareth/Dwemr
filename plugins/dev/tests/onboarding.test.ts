@@ -319,7 +319,7 @@ test("formatDoctorText suggests ACPX permission and timeout host settings when p
 });
 
 test("buildAcpRuntimeOptionPatch keeps only model and cwd for ACP-native sessions", () => {
-  const patch = buildAcpRuntimeOptionPatch("/tmp/dwemr-project", { model: "claude-sonnet-4-6" }, 60);
+  const patch = buildAcpRuntimeOptionPatch("/tmp/dwemr-project", { model: "claude-sonnet-4-6" });
 
   assert.deepEqual(patch, {
     model: "claude-sonnet-4-6",

@@ -1,7 +1,7 @@
 import { hasSavedClarificationBatch } from "../control-plane/onboarding-state";
 import { inspectProjectHealth, provisionProjectProfile, repairBootstrapAssets, type ProjectHealth } from "../control-plane/project-assets";
 import { readPipelineStateBrief } from "../control-plane/pipeline-state";
-import type { ClaudeRuntimeProbe } from "./claude-runner";
+import type { DwemrClaudeRuntimeProbe } from "./claude-runner";
 import type { DwemrPluginConfig } from "./project-selection";
 import { DWEMR_CONTRACT_VERSION } from "../control-plane/state-contract";
 import type { DwemrRuntimeInspection } from "./runtime";
@@ -45,7 +45,7 @@ export type DwemrDoctorReport = {
   fixNotes: string[];
   previewNotes: string[];
   automationNotes: string[];
-  claudeProbe: ClaudeRuntimeProbe;
+  claudeProbe: DwemrClaudeRuntimeProbe;
   acpxPermissionRepair?: DwemrDoctorAcpxPermissionRepair;
 };
 
@@ -227,7 +227,7 @@ function buildAcpxPermissionPreviewNotes(
 
 function buildAcpxAutomationNotes(
   runtime: DwemrRuntimeState,
-  claudeProbe: ClaudeRuntimeProbe,
+  claudeProbe: DwemrClaudeRuntimeProbe,
   repair: DwemrDoctorAcpxPermissionRepair | undefined,
 ) {
   const notes: string[] = [];
@@ -618,7 +618,7 @@ export async function runDwemrDoctor(
     runtimeLedgerNotes = buildRuntimeLedgerNotes(activeRun, brief?.milestoneKind);
   }
 
-  let claudeProbe: ClaudeRuntimeProbe = { status: "skipped", detail: "Skipped because no execution runtime is ready yet." };
+  let claudeProbe: DwemrClaudeRuntimeProbe = { status: "skipped", detail: "Skipped because no execution runtime is ready yet." };
   if (runtimeReady() && project) {
     claudeProbe = await runtimeBackend.probeClaudeRuntime({
       targetPath: project.targetPath,

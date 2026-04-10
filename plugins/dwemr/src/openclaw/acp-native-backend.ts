@@ -7,7 +7,7 @@ import {
   snapshotChildPids,
   type DwemrActiveRun,
 } from "./active-runs";
-import type { ProcessResult } from "./claude-runner";
+import type { DwemrProcessResult } from "./claude-runner";
 import type { DwemrRuntimeConfig } from "./runtime";
 import type { DwemrClaudeModelConfig } from "./claude-runner";
 import type {
@@ -25,9 +25,8 @@ import {
   resolveAcpBackendId,
   resolveOwnerSessionKey,
   resolveOpenClawConfig,
-  resolveRuntimeTimeoutSeconds,
 } from "./acp-config";
-import { buildAcpSessionScopeKey, buildCommandScopedAcpSessionKey } from "./acp-keys";
+import { buildAcpSessionKey } from "./acp-keys";
 import { collectAcpRuntimeOutput, formatAcpLifecycleError } from "./acp-output";
 import { type AcpFlowTracking, createAcpFlowTracking } from "./acp-flow-tracking";
 import { isAcpRuntimeReady } from "./acp-readiness";
@@ -40,6 +39,7 @@ import {
 } from "./acp-session-lifecycle";
 import { attemptFlowCancel, attemptOsKill, attemptSessionCancel } from "./acp-stop";
 import {
+  type AcpEventCollector,
   buildErrorResult,
   buildSuccessResult,
   buildTurnEventHandler,
@@ -49,6 +49,8 @@ import { getAcpSessionManager, readAcpSessionEntry } from "openclaw/plugin-sdk/a
 
 const ACP_NATIVE_DOCTOR_PROMPT_TEXT = "Say only: DWEMR_READY";
 const ACP_NATIVE_DOCTOR_PROMPT_EXPECTED = "DWEMR_READY";
+const MISSING_OPENCLAW_CONFIG_CONTEXT_MESSAGE =
+  "DWEMR ACP-native runtime is missing OpenClaw config context.";
 
 async function initAcpOneshotSession(params: {
   manager: ReturnType<typeof getAcpSessionManager>;
@@ -58,7 +60,6 @@ async function initAcpOneshotSession(params: {
   backendId: string | undefined;
   targetPath: string;
   runtimeConfig: (DwemrRuntimeConfig & DwemrClaudeModelConfig) | undefined;
-  timeoutSeconds: number | undefined;
 }) {
   await params.manager.initializeSession({
     cfg: params.cfg,
@@ -71,7 +72,7 @@ async function initAcpOneshotSession(params: {
   await params.manager.updateSessionRuntimeOptions({
     cfg: params.cfg,
     sessionKey: params.sessionKey,
-    patch: buildAcpRuntimeOptionPatch(params.targetPath, params.runtimeConfig, params.timeoutSeconds),
+    patch: buildAcpRuntimeOptionPatch(params.targetPath, params.runtimeConfig),
   });
 }
 
@@ -125,85 +126,160 @@ type RunAcpClaudeCommandDeps = {
   context: DwemrRuntimeContext | undefined;
 };
 
-async function runAcpClaudeCommand(deps: RunAcpClaudeCommandDeps): Promise<ProcessResult> {
-  const { request, runtimeApi, manager, context } = deps;
+type AcpRunPlan = {
+  cfg: Record<string, unknown>;
+  agentId: string;
+  backendId: string | undefined;
+  requestId: string;
+  sessionKey: string;
+  ownerSessionKey: string;
+};
+
+function planAcpRun(deps: RunAcpClaudeCommandDeps): AcpRunPlan {
+  const { request, runtimeApi, context } = deps;
   const runtimeState = request.runtimeState ?? isAcpRuntimeReady(runtimeApi, request.runtimeConfig ?? {});
   if (!runtimeState.ready) {
     throw new Error(`DWEMR ACP-native runtime is not ready.\n${runtimeState.notes?.join("\n") ?? ""}`.trim());
   }
-
   const cfg = resolveOpenClawConfig(runtimeApi);
   if (!cfg) {
-    throw new Error("DWEMR ACP-native runtime is missing OpenClaw config context.");
+    throw new Error(MISSING_OPENCLAW_CONFIG_CONTEXT_MESSAGE);
   }
-
   const agentId = resolveAcpAgentId(runtimeApi, request.runtimeConfig);
   const backendId = resolveAcpBackendId(runtimeApi, request.runtimeConfig);
   const requestId = `dwemr-${randomUUID()}`;
-  const sessionKey = buildCommandScopedAcpSessionKey(request.targetPath, agentId, requestId, request.runtimeConfig);
+  const sessionKey = buildAcpSessionKey({
+    targetPath: request.targetPath,
+    agentId,
+    runtimeConfig: request.runtimeConfig,
+    scope: { kind: "command", requestId },
+  });
   const ownerSessionKey = resolveOwnerSessionKey(context, sessionKey);
-  const timeoutSeconds = resolveRuntimeTimeoutSeconds(request.options);
+  return { cfg, agentId, backendId, requestId, sessionKey, ownerSessionKey };
+}
 
+async function startAcpRun(params: {
+  manager: ReturnType<typeof getAcpSessionManager>;
+  plan: AcpRunPlan;
+  request: DwemrRunCommandRequest;
+  runtimeApi: RuntimeApiLike | undefined;
+  context: DwemrRuntimeContext | undefined;
+}): Promise<AcpFlowTracking> {
+  const { manager, plan, request, runtimeApi, context } = params;
+  const beforePids = await snapshotChildPids("claude");
+  await initAcpOneshotSession({
+    manager,
+    cfg: plan.cfg,
+    sessionKey: plan.sessionKey,
+    agentId: plan.agentId,
+    backendId: plan.backendId,
+    targetPath: request.targetPath,
+    runtimeConfig: request.runtimeConfig,
+  });
+  const discoveredPid = await discoverAcpAgentPid(beforePids, request.targetPath);
+  const flowTracking = createAcpFlowTracking({
+    runtimeApi,
+    ownerSessionKey: plan.ownerSessionKey,
+    childSessionKey: plan.sessionKey,
+    requesterOrigin: context?.toolContext?.deliveryContext,
+    action: request.options?.action ?? "unknown",
+    claudeCommand: request.claudeCommand,
+    requestId: plan.requestId,
+  });
+  await tryRegisterAcpActiveRun({ request, plan, discoveredPid, flowTracking });
+  return flowTracking;
+}
+
+async function tryRegisterAcpActiveRun(params: {
+  request: DwemrRunCommandRequest;
+  plan: AcpRunPlan;
+  discoveredPid: number | undefined;
+  flowTracking: AcpFlowTracking;
+}) {
+  const { request, plan, discoveredPid, flowTracking } = params;
+  if (!request.options?.stateDir) return;
+  try {
+    await registerActiveRun(request.options.stateDir, {
+      projectPath: request.targetPath,
+      startedAt: new Date().toISOString(),
+      action: request.options.action ?? "unknown",
+      executionMode: request.options.executionMode,
+      claudeCommand: request.claudeCommand,
+      sessionName: plan.sessionKey,
+      pid: discoveredPid,
+      identity: {
+        backendKind: ACP_NATIVE_BACKEND_KIND,
+        runId: plan.requestId,
+        flowId: flowTracking.flowId,
+        taskId: flowTracking.taskId,
+        childSessionKey: plan.sessionKey,
+        ownerSessionKey: plan.ownerSessionKey,
+        pid: discoveredPid,
+      },
+    });
+  } catch {
+    // Best-effort registry; command execution should continue even if bookkeeping fails.
+  }
+}
+
+async function executeAcpTurn(params: {
+  manager: ReturnType<typeof getAcpSessionManager>;
+  plan: AcpRunPlan;
+  request: DwemrRunCommandRequest;
+  collector: AcpEventCollector;
+}): Promise<string> {
+  const { manager, plan, request, collector } = params;
+  const handler = buildTurnEventHandler(collector);
+  await manager.runTurn({
+    cfg: plan.cfg,
+    sessionKey: plan.sessionKey,
+    text: request.claudeCommand,
+    mode: "prompt",
+    requestId: plan.requestId,
+    onEvent: handler.onEvent,
+  });
+  return handler.summarize();
+}
+
+async function cleanupAcpRun(params: {
+  manager: ReturnType<typeof getAcpSessionManager>;
+  plan: AcpRunPlan;
+  request: DwemrRunCommandRequest;
+}): Promise<{ stderrSuffix?: string }> {
+  const { manager, plan, request } = params;
+  const cleanup = await closeAcpCommandSession({ cfg: plan.cfg, manager, sessionKey: plan.sessionKey });
+  if (cleanup.status === "closed" && request.options?.stateDir) {
+    try {
+      await clearAcpActiveRun(request.options.stateDir, request.targetPath, plan.requestId);
+    } catch {
+      // Best-effort cleanup; command result should still be returned.
+    }
+  }
+  if (cleanup.status !== "closed") {
+    return { stderrSuffix: cleanup.error };
+  }
+  return {};
+}
+
+async function runAcpClaudeCommand(deps: RunAcpClaudeCommandDeps): Promise<DwemrProcessResult> {
+  const { request, runtimeApi, manager, context } = deps;
+  const plan = planAcpRun(deps);
   const collector = createAcpEventCollector();
   let flowTracking: AcpFlowTracking | undefined;
-  let result: ProcessResult = { exitCode: 1, stdout: "", stderr: "", timedOut: false };
+  let result: DwemrProcessResult = { exitCode: 1, stdout: "", stderr: "", timedOut: false };
 
   try {
-    const beforePids = await snapshotChildPids("claude");
-    await initAcpOneshotSession({
-      manager, cfg, sessionKey, agentId, backendId,
-      targetPath: request.targetPath,
-      runtimeConfig: request.runtimeConfig,
-      timeoutSeconds,
-    });
-    const discoveredPid = await discoverAcpAgentPid(beforePids, request.targetPath);
-    flowTracking = createAcpFlowTracking({
-      runtimeApi, ownerSessionKey, childSessionKey: sessionKey,
-      requesterOrigin: context?.toolContext?.deliveryContext,
-      action: request.options?.action ?? "unknown",
-      claudeCommand: request.claudeCommand, requestId,
-    });
-
-    if (request.options?.stateDir) {
-      try {
-        await registerActiveRun(request.options.stateDir, {
-          projectPath: request.targetPath,
-          startedAt: new Date().toISOString(),
-          action: request.options.action ?? "unknown",
-          executionMode: request.options.executionMode,
-          claudeCommand: request.claudeCommand,
-          sessionName: sessionKey,
-          pid: discoveredPid,
-          identity: {
-            backendKind: ACP_NATIVE_BACKEND_KIND, runId: requestId,
-            flowId: flowTracking.flowId, taskId: flowTracking.taskId,
-            childSessionKey: sessionKey, ownerSessionKey, pid: discoveredPid,
-          },
-        });
-      } catch {
-        // Best-effort registry; command execution should continue even if bookkeeping fails.
-      }
-    }
-
-    const handler = buildTurnEventHandler(collector);
-    await manager.runTurn({ cfg, sessionKey, text: request.claudeCommand, mode: "prompt", requestId, onEvent: handler.onEvent });
-
-    if (flowTracking) await flowTracking.finish({ failed: false });
-    result = buildSuccessResult(collector, handler.summarize());
+    flowTracking = await startAcpRun({ manager, plan, request, runtimeApi, context });
+    const diagSummary = await executeAcpTurn({ manager, plan, request, collector });
+    await flowTracking.finish({ failed: false });
+    result = buildSuccessResult(collector, diagSummary);
   } catch (error) {
     if (flowTracking) await flowTracking.finish({ failed: true, error: String(error) });
     result = buildErrorResult(error, collector);
   } finally {
-    const cleanup = await closeAcpCommandSession({ cfg, manager, sessionKey });
-    if (!cleanup.terminal && cleanup.error) {
-      result.stderr = result.stderr ? `${result.stderr}\n${cleanup.error}` : cleanup.error;
-    }
-    if (request.options?.stateDir && cleanup.terminal) {
-      try {
-        await clearAcpActiveRun(request.options.stateDir, request.targetPath, requestId);
-      } catch {
-        // Best-effort cleanup; command result should still be returned.
-      }
+    const { stderrSuffix } = await cleanupAcpRun({ manager, plan, request });
+    if (stderrSuffix) {
+      result.stderr = result.stderr ? `${result.stderr}\n${stderrSuffix}` : stderrSuffix;
     }
   }
   return result;
@@ -245,16 +321,21 @@ export function createAcpNativeRuntimeBackend(context?: DwemrRuntimeContext): Dw
 
       const cfg = resolveOpenClawConfig(runtimeApi);
       if (!cfg) {
-        return { status: "failed", detail: "ACP-native runtime is missing OpenClaw config context." };
+        return { status: "failed", detail: MISSING_OPENCLAW_CONFIG_CONTEXT_MESSAGE };
       }
 
       const agentId = resolveAcpAgentId(runtimeApi, request.runtimeConfig);
       const backendId = resolveAcpBackendId(runtimeApi, request.runtimeConfig);
-      const sessionKey = `${buildAcpSessionScopeKey(request.targetPath, agentId, request.runtimeConfig)}-doctor`;
+      const sessionKey = buildAcpSessionKey({
+        targetPath: request.targetPath,
+        agentId,
+        runtimeConfig: request.runtimeConfig,
+        scope: { kind: "doctor" },
+      });
       const requestId = `dwemr-doctor-${randomUUID()}`;
       const collector = createAcpEventCollector();
       let probeResult:
-        | { status: "ok"; detail: string; result: ProcessResult }
+        | { status: "ok"; detail: string; result: DwemrProcessResult }
         | { status: "failed"; detail: string }
         | undefined;
 
@@ -263,7 +344,6 @@ export function createAcpNativeRuntimeBackend(context?: DwemrRuntimeContext): Dw
           manager, cfg, sessionKey, agentId, backendId,
           targetPath: request.targetPath,
           runtimeConfig: request.runtimeConfig,
-          timeoutSeconds: 60,
         });
         await manager.runTurn({
           cfg,
@@ -299,7 +379,7 @@ export function createAcpNativeRuntimeBackend(context?: DwemrRuntimeContext): Dw
         };
       } finally {
         const cleanup = await closeAcpCommandSession({ cfg, manager, sessionKey });
-        if (!cleanup.terminal && cleanup.error) {
+        if (cleanup.status !== "closed") {
           probeResult = {
             status: "failed",
             detail: probeResult

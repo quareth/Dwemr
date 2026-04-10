@@ -53,11 +53,16 @@ export function closeAcpSession(
   });
 }
 
+export type CloseAcpCommandSessionResult =
+  | { status: "closed" }
+  | { status: "stale"; error: string }
+  | { status: "still_active"; error: string };
+
 export async function closeAcpCommandSession(params: {
   cfg: Record<string, unknown>;
   manager: ReturnType<typeof getAcpSessionManager>;
   sessionKey: string;
-}) {
+}): Promise<CloseAcpCommandSessionResult> {
   const before = params.manager.resolveSession({
     cfg: params.cfg,
     sessionKey: params.sessionKey,
@@ -67,9 +72,12 @@ export async function closeAcpCommandSession(params: {
       sessionKey: params.sessionKey,
       cfg: params.cfg,
     });
+    if (!storeEntry?.acp) {
+      return { status: "closed" };
+    }
     return {
-      terminal: !storeEntry?.acp,
-      error: storeEntry?.acp ? "ACP session metadata still exists after runtime reported no active session." : undefined,
+      status: "stale",
+      error: "ACP session metadata still exists after runtime reported no active session.",
     };
   }
 
@@ -77,7 +85,7 @@ export async function closeAcpCommandSession(params: {
     await closeAcpSession(params.manager, params.cfg, params.sessionKey, ACP_LIFECYCLE_REASONS.commandCleanup, { clearMeta: true });
   } catch (error) {
     return {
-      terminal: false,
+      status: "still_active",
       error: `DWEMR could not close ACP session \`${params.sessionKey}\` cleanly: ${formatAcpLifecycleError(error)}`,
     };
   }
@@ -91,11 +99,11 @@ export async function closeAcpCommandSession(params: {
     cfg: params.cfg,
   });
   if (after.kind === "none" && !storeEntry?.acp) {
-    return { terminal: true, error: undefined };
+    return { status: "closed" };
   }
 
   return {
-    terminal: false,
+    status: "still_active",
     error: `ACP session \`${params.sessionKey}\` still appears active after DWEMR cleanup attempted to close it.`,
   };
 }

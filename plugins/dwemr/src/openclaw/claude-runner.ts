@@ -1,17 +1,36 @@
+// Mixed module: live shared types/helpers + intentionally-disabled spawn stubs.
+//
+// Still in active use by the ACP-native path:
+//   - Types: `DwemrProcessResult`, `DwemrClaudeRuntimeProbe`, `DwemrClaudeModelConfig`,
+//     `ClaudeCommandRunOptions` (imported by `acp-native-backend.ts`,
+//     `acp-turn-result.ts`, `runtime-backend-types.ts`, and others).
+//   - Helpers: `translateClaudeCommandSurface`, `formatRunnerResult` (used by
+//     `action-handlers.ts` and the test suite).
+//
+// Intentionally disabled (kept as failing stubs, not dead code):
+//   - `LEGACY_SPAWN_DISABLED_MESSAGE`, `runClaudeCommand`, `probeClaudeRuntime`.
+//
+// Spawn-based execution was removed when DWEMR moved to ACP-native runtime.
+// These stubs exist so that any caller still pinned to `runtimeBackend: "spawn"`
+// (via `spawn-backend.ts` — see its top-of-file note) gets a clear error
+// pointing them at the ACP-native backend instead of an opaque failure. If the
+// spawn fallback in `runtime-backend.ts` is ever removed, this whole stub block
+// can go with it.
+
 import type { DwemrExecutionMode } from "../control-plane/project-config";
 import type { ProjectHealth } from "../control-plane/project-assets";
 
-export type ProcessResult = {
+export type DwemrProcessResult = {
   exitCode: number;
   stdout: string;
   stderr: string;
   timedOut: boolean;
 };
 
-export type ClaudeRuntimeProbe =
+export type DwemrClaudeRuntimeProbe =
   | { status: "skipped"; detail: string }
-  | { status: "ok"; detail: string; result: ProcessResult }
-  | { status: "failed"; detail: string; result?: ProcessResult };
+  | { status: "ok"; detail: string; result: DwemrProcessResult }
+  | { status: "failed"; detail: string; result?: DwemrProcessResult };
 
 export type DwemrClaudeModelConfig = {
   model?: string;
@@ -62,7 +81,7 @@ export function translateClaudeCommandSurface(text: string) {
   return translated;
 }
 
-export async function probeClaudeRuntime(_command: string, _targetPath: string, project: ProjectHealth, _config: DwemrClaudeModelConfig = {}): Promise<ClaudeRuntimeProbe> {
+export async function probeClaudeRuntime(_command: string, _targetPath: string, project: ProjectHealth, _config: DwemrClaudeModelConfig = {}): Promise<DwemrClaudeRuntimeProbe> {
   if (!project.exists) {
     return { status: "skipped", detail: "Skipped because the target project path does not exist." };
   }
@@ -76,7 +95,7 @@ export async function probeClaudeRuntime(_command: string, _targetPath: string, 
     };
   }
 
-  const result: ProcessResult = {
+  const result: DwemrProcessResult = {
     exitCode: 1,
     stdout: "",
     stderr: LEGACY_SPAWN_DISABLED_MESSAGE,
@@ -96,7 +115,7 @@ export async function runClaudeCommand(
   _claudeCommand: string,
   _config: DwemrClaudeModelConfig = {},
   _options: ClaudeCommandRunOptions = {},
-): Promise<ProcessResult> {
+): Promise<DwemrProcessResult> {
   return {
     exitCode: 1,
     stdout: "",

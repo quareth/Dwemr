@@ -180,6 +180,7 @@ async function readActiveRunsRaw(stateDir: string) {
     const parsed = JSON.parse(raw) as { runs?: Array<Partial<DwemrActiveRun>> };
     return Array.isArray(parsed.runs) ? parsed.runs : [];
   } catch {
+    // File missing or invalid JSON — treat as an empty registry.
     return [];
   }
 }
@@ -314,16 +315,37 @@ export async function killProcessWithEscalation(pid: number): Promise<KillProces
   return { status: "failed", error: `Process ${pid} did not exit after SIGTERM and SIGKILL.` };
 }
 
+/**
+ * Snapshot child PIDs whose command line matches `filter`.
+ *
+ * POSIX-only: relies on `pgrep`, which is not available on Windows. Returns
+ * an empty array on Windows or any failure — callers must tolerate
+ * undiscovered PIDs and treat the result as best-effort.
+ */
 export async function snapshotChildPids(filter: string): Promise<number[]> {
+  if (process.platform === "win32") {
+    return [];
+  }
   try {
     const { stdout } = await execFileAsync("pgrep", ["-f", filter]);
     return stdout.trim().split("\n").map(Number).filter((pid) => pid > 0 && Number.isInteger(pid));
   } catch {
+    // pgrep absent or returned non-zero (no matches) — treat as no PIDs.
     return [];
   }
 }
 
+/**
+ * Resolve the current working directory of a running process by PID.
+ *
+ * POSIX-only: relies on `lsof`, which is not available on Windows. Returns
+ * `undefined` on Windows or any failure — callers must tolerate an
+ * unresolved cwd and treat the result as best-effort.
+ */
 export async function resolveCwdForPid(pid: number): Promise<string | undefined> {
+  if (process.platform === "win32") {
+    return undefined;
+  }
   try {
     const { stdout } = await execFileAsync("lsof", ["-a", "-d", "cwd", "-p", String(pid), "-Fn"]);
     for (const line of stdout.split("\n")) {
@@ -333,6 +355,7 @@ export async function resolveCwdForPid(pid: number): Promise<string | undefined>
     }
     return undefined;
   } catch {
+    // lsof absent or returned non-zero — treat as unresolved cwd.
     return undefined;
   }
 }

@@ -1,4 +1,4 @@
-import type { ProcessResult } from "./claude-runner";
+import type { DwemrProcessResult } from "./claude-runner";
 import { collectAcpRuntimeOutput, formatAcpLifecycleError } from "./acp-output";
 import { isAcpRuntimeError } from "openclaw/plugin-sdk/acp-runtime";
 
@@ -61,7 +61,7 @@ export function buildTurnEventHandler(collector: AcpEventCollector) {
   return { onEvent, summarize };
 }
 
-export function buildSuccessResult(collector: AcpEventCollector, diagSummary: string): ProcessResult {
+export function buildSuccessResult(collector: AcpEventCollector, diagSummary: string): DwemrProcessResult {
   const stdout = collectAcpRuntimeOutput(collector.events);
   return {
     exitCode: 0,
@@ -71,7 +71,7 @@ export function buildSuccessResult(collector: AcpEventCollector, diagSummary: st
   };
 }
 
-export function buildErrorResult(error: unknown, collector: AcpEventCollector): ProcessResult {
+export function buildErrorResult(error: unknown, collector: AcpEventCollector): DwemrProcessResult {
   const timedOut = isAcpRuntimeError(error) && /\btimed out\b/i.test(error.message);
   return {
     exitCode: timedOut ? 124 : 1,

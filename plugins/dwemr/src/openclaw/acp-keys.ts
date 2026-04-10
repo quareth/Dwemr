@@ -3,7 +3,38 @@ import type { DwemrRuntimeConfig } from "./runtime";
 import type { DwemrClaudeModelConfig } from "./claude-runner";
 import { normalizeAcpAgentId } from "./acp-config";
 
-export function buildAcpSessionScopeKey(targetPath: string, agentId: string, runtimeConfig?: DwemrRuntimeConfig & DwemrClaudeModelConfig) {
+export type AcpSessionKeyScope =
+  | { kind: "scope" }
+  | { kind: "command"; requestId: string }
+  | { kind: "doctor" };
+
+export function buildAcpSessionKey(params: {
+  targetPath: string;
+  agentId: string;
+  runtimeConfig?: DwemrRuntimeConfig & DwemrClaudeModelConfig;
+  scope: AcpSessionKeyScope;
+}): string {
+  const baseKey = buildBaseScopeKey(params.targetPath, params.agentId, params.runtimeConfig);
+  switch (params.scope.kind) {
+    case "scope":
+      return baseKey;
+    case "command": {
+      const runSuffix = createHash("sha256")
+        .update(`${params.scope.requestId}:${params.targetPath}`)
+        .digest("hex")
+        .slice(0, 8);
+      return `${baseKey}:run-${runSuffix}`;
+    }
+    case "doctor":
+      return `${baseKey}-doctor`;
+  }
+}
+
+function buildBaseScopeKey(
+  targetPath: string,
+  agentId: string,
+  runtimeConfig?: DwemrRuntimeConfig & DwemrClaudeModelConfig,
+): string {
   const suffixSource = [
     targetPath,
     runtimeConfig?.model?.trim(),
@@ -13,15 +44,4 @@ export function buildAcpSessionScopeKey(targetPath: string, agentId: string, run
 
   const hash = createHash("sha256").update(suffixSource || targetPath).digest("hex").slice(0, 12);
   return `agent:${normalizeAcpAgentId(agentId)}:acp:dwemr-${hash}`;
-}
-
-export function buildCommandScopedAcpSessionKey(
-  targetPath: string,
-  agentId: string,
-  requestId: string,
-  runtimeConfig?: DwemrRuntimeConfig & DwemrClaudeModelConfig,
-) {
-  const scopeKey = buildAcpSessionScopeKey(targetPath, agentId, runtimeConfig);
-  const runSuffix = createHash("sha256").update(`${requestId}:${targetPath}`).digest("hex").slice(0, 8);
-  return `${scopeKey}:run-${runSuffix}`;
 }

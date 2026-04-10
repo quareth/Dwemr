@@ -1,7 +1,19 @@
 import type { DwemrActiveRun } from "./active-runs";
-import type { ClaudeCommandRunOptions, ClaudeRuntimeProbe, DwemrClaudeModelConfig, ProcessResult } from "./claude-runner";
+import type { ClaudeCommandRunOptions, DwemrClaudeRuntimeProbe, DwemrClaudeModelConfig, DwemrProcessResult } from "./claude-runner";
 import type { DwemrRuntimeConfig, DwemrRuntimeInspection } from "./runtime";
 import type { ProjectHealth } from "../control-plane/project-assets";
+
+// Naming convention for backend types in this module and its siblings:
+//   `Dwemr*` prefix → public DWEMR backend contract. These types appear in
+//                     `DwemrRuntimeBackend` method signatures and are imported
+//                     by handlers, doctor, tests, and external integrations.
+//   No prefix       → SDK-shaped wrapper types that mirror upstream OpenClaw
+//                     shapes (`RuntimeApiLike`, `BoundFlowViews`,
+//                     `BoundTaskFlow`, `RuntimeTasks*Api`, `FlowRevision`,
+//                     `RunTaskParams`, etc.) OR file-local helpers within an
+//                     `acp-*` module (`StopAttemptResult`, `AcpEventCollector`,
+//                     `AcpSessionKeyScope`, `CloseAcpCommandSessionResult`,
+//                     `AcpRuntimeSummary`, `AcpFlowTracking`).
 
 export type FlowRevision = { flowId: string; revision: number };
 
@@ -94,7 +106,7 @@ export type RuntimeTaskFlowApi = {
 };
 
 export type RuntimeApiLike = {
-  config?: any;
+  config?: unknown;
   runtime?: {
     tasks?: { flows?: RuntimeTasksFlowsApi };
     taskFlow?: RuntimeTaskFlowApi;
@@ -166,8 +178,8 @@ export type DwemrRuntimeBackend = {
   kind: string;
   inspectRuntime: (config: DwemrRuntimeConfig) => Promise<DwemrRuntimeState>;
   ensureRuntime: (config: DwemrRuntimeConfig) => Promise<DwemrRuntimeState>;
-  runClaudeCommand: (request: DwemrRunCommandRequest) => Promise<ProcessResult>;
-  probeClaudeRuntime: (request: DwemrRuntimeProbeRequest) => Promise<ClaudeRuntimeProbe>;
+  runClaudeCommand: (request: DwemrRunCommandRequest) => Promise<DwemrProcessResult>;
+  probeClaudeRuntime: (request: DwemrRuntimeProbeRequest) => Promise<DwemrClaudeRuntimeProbe>;
   findActiveRun: (stateDir: string, projectPath: string) => Promise<DwemrActiveRun | undefined>;
   stopActiveRun: (stateDir: string, projectPath: string) => Promise<DwemrStopResult>;
   listSessions?: (stateDir: string) => Promise<{ sessions: DwemrSessionInfo[]; aggregate: { activeSessions: number; evictedTotal: number } }>;
