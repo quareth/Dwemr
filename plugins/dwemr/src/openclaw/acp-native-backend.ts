@@ -2,8 +2,6 @@ import { randomUUID } from "node:crypto";
 import {
   clearActiveRun,
   findActiveRun as findStoredActiveRun,
-  isProcessRunning,
-  killProcessWithEscalation,
   loadActiveRuns,
   registerActiveRun,
   snapshotChildPids,
@@ -16,7 +14,6 @@ import type {
   DwemrRuntimeBackend,
   DwemrRuntimeContext,
   DwemrSessionInfo,
-  RuntimeApiLike,
 } from "./runtime-backend-types";
 import {
   ACP_NATIVE_BACKEND_KIND,
@@ -31,7 +28,6 @@ import {
   resolveOwnerSessionKey,
   resolveOpenClawConfig,
   resolveRuntimeTimeoutSeconds,
-  resolveLegacyTaskFlow,
 } from "./acp-config";
 import { type AcpFlowTracking, createAcpFlowTracking } from "./acp-flow-tracking";
 import {
@@ -42,6 +38,7 @@ import {
   isAcpRuntimeReady,
   reconcileTrackedAcpRun,
 } from "./acp-session-lifecycle";
+import { attemptFlowCancel, attemptOsKill, attemptSessionCancel } from "./acp-stop";
 import {
   buildErrorResult,
   buildSuccessResult,
@@ -105,76 +102,6 @@ function loadAcpActiveRuns(stateDir: string) {
 
 function clearAcpActiveRun(stateDir: string, projectPath: string, runId: string) {
   return clearActiveRun(stateDir, projectPath, { runId, backendKind: ACP_NATIVE_BACKEND_KIND });
-}
-
-type StopAttemptResult =
-  | { outcome: "stopped"; mechanism: { kind: "signal" | "runtime_cancel"; detail: string } }
-  | { outcome: "failed"; error: string }
-  | { outcome: "skipped" };
-
-async function attemptFlowCancel(params: {
-  runtimeApi: RuntimeApiLike | undefined;
-  cfg: Record<string, unknown>;
-  flowId: string;
-  ownerSessionKey: string;
-  requesterOrigin?: unknown;
-}): Promise<StopAttemptResult> {
-  const legacyTaskFlow = resolveLegacyTaskFlow(params.runtimeApi);
-  const boundTaskFlow = legacyTaskFlow?.bindSession({
-    sessionKey: params.ownerSessionKey,
-    requesterOrigin: params.requesterOrigin,
-  });
-  if (!boundTaskFlow?.cancel) {
-    return { outcome: "skipped" };
-  }
-  try {
-    await boundTaskFlow.cancel({ flowId: params.flowId, cfg: params.cfg });
-    return { outcome: "stopped", mechanism: { kind: "runtime_cancel", detail: "taskFlow.cancel" } };
-  } catch (error) {
-    return { outcome: "failed", error: formatAcpLifecycleError(error) };
-  }
-}
-
-async function attemptSessionCancel(params: {
-  manager: ReturnType<typeof getAcpSessionManager>;
-  cfg: Record<string, unknown>;
-  sessionKey: string;
-  flowCancelFailed: boolean;
-}): Promise<StopAttemptResult> {
-  try {
-    await params.manager.cancelSession({ cfg: params.cfg, sessionKey: params.sessionKey, reason: ACP_LIFECYCLE_REASONS.stop });
-    try {
-      await closeAcpSession(params.manager, params.cfg, params.sessionKey, ACP_LIFECYCLE_REASONS.stopCleanup);
-    } catch {
-      // Best-effort cleanup of persistent session state.
-    }
-    return {
-      outcome: "stopped",
-      mechanism: {
-        kind: "runtime_cancel",
-        detail: params.flowCancelFailed ? "acp.cancelSession (after taskFlow.cancel failed)" : "acp.cancelSession",
-      },
-    };
-  } catch (error) {
-    return { outcome: "failed", error: formatAcpLifecycleError(error) };
-  }
-}
-
-async function attemptOsKill(pid: number | undefined): Promise<StopAttemptResult> {
-  if (!pid || !isProcessRunning(pid)) {
-    return { outcome: "skipped" };
-  }
-  const killResult = await killProcessWithEscalation(pid);
-  if (killResult.status === "killed" || killResult.status === "already_exited") {
-    return {
-      outcome: "stopped",
-      mechanism: {
-        kind: "signal",
-        detail: `OS-level ${killResult.status === "killed" ? killResult.signal : "process already exited"} (after ACP cancel failed)`,
-      },
-    };
-  }
-  return { outcome: "skipped" };
 }
 
 export function createAcpNativeRuntimeBackend(context?: DwemrRuntimeContext): DwemrRuntimeBackend {
