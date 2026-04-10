@@ -42,22 +42,16 @@ import {
   isAcpRuntimeReady,
   reconcileTrackedAcpRun,
 } from "./acp-session-lifecycle";
-import { getAcpSessionManager, isAcpRuntimeError, readAcpSessionEntry } from "openclaw/plugin-sdk/acp-runtime";
+import {
+  buildErrorResult,
+  buildSuccessResult,
+  buildTurnEventHandler,
+  createAcpEventCollector,
+} from "./acp-turn-result";
+import { getAcpSessionManager, readAcpSessionEntry } from "openclaw/plugin-sdk/acp-runtime";
 
 const ACP_NATIVE_DOCTOR_PROMPT_TEXT = "Say only: DWEMR_READY";
 const ACP_NATIVE_DOCTOR_PROMPT_EXPECTED = "DWEMR_READY";
-
-function createAcpEventCollector() {
-  const events: Array<{ type: string; text?: string; stream?: string }> = [];
-  function collect(event: { type: string; [k: string]: unknown }) {
-    events.push({
-      type: event.type,
-      text: "text" in event ? (event.text as string) : undefined,
-      stream: event.type === "text_delta" ? (event.stream as string) : undefined,
-    });
-  }
-  return { events, collect };
-}
 
 async function initAcpOneshotSession(params: {
   manager: ReturnType<typeof getAcpSessionManager>;
@@ -111,68 +105,6 @@ function loadAcpActiveRuns(stateDir: string) {
 
 function clearAcpActiveRun(stateDir: string, projectPath: string, runId: string) {
   return clearActiveRun(stateDir, projectPath, { runId, backendKind: ACP_NATIVE_BACKEND_KIND });
-}
-
-function buildTurnEventHandler(collector: ReturnType<typeof createAcpEventCollector>) {
-  const turnDiag: Array<{ type: string; detail?: string; at: number }> = [];
-  const turnStartedAt = Date.now();
-
-  function onEvent(event: { type: string; [k: string]: unknown }) {
-    collector.collect(event);
-    if (event.type === "done") {
-      turnDiag.push({
-        type: "done",
-        detail: "stopReason" in event ? String((event as { stopReason?: string }).stopReason ?? "none") : "no-field",
-        at: Date.now() - turnStartedAt,
-      });
-    } else if (event.type === "error") {
-      turnDiag.push({
-        type: "error",
-        detail: "message" in event ? String((event as { message?: string }).message ?? "") : "unknown",
-        at: Date.now() - turnStartedAt,
-      });
-    } else if (event.type === "tool_call") {
-      turnDiag.push({
-        type: "tool_call",
-        detail: "title" in event ? String((event as { title?: string }).title ?? "") : undefined,
-        at: Date.now() - turnStartedAt,
-      });
-    }
-  }
-
-  function summarize() {
-    const turnDurationMs = Date.now() - turnStartedAt;
-    const textDeltaCount = collector.events.filter((e) => e.type === "text_delta" && e.stream !== "thought").length;
-    const toolCallCount = collector.events.filter((e) => e.type === "tool_call").length;
-    return [
-      `[DWEMR-DIAG] runTurn completed in ${Math.round(turnDurationMs / 1000)}s`,
-      `events: ${collector.events.length} total, ${textDeltaCount} text_delta, ${toolCallCount} tool_call`,
-      `done-events: ${JSON.stringify(turnDiag.filter((d) => d.type === "done"))}`,
-      turnDiag.some((d) => d.type === "error") ? `errors: ${JSON.stringify(turnDiag.filter((d) => d.type === "error"))}` : undefined,
-    ].filter(Boolean).join(" | ");
-  }
-
-  return { onEvent, summarize };
-}
-
-function buildSuccessResult(collector: ReturnType<typeof createAcpEventCollector>, diagSummary: string): ProcessResult {
-  const stdout = collectAcpRuntimeOutput(collector.events);
-  return {
-    exitCode: 0,
-    stdout,
-    stderr: stdout ? "" : diagSummary,
-    timedOut: false,
-  };
-}
-
-function buildErrorResult(error: unknown, collector: ReturnType<typeof createAcpEventCollector>): ProcessResult {
-  const timedOut = isAcpRuntimeError(error) && /\btimed out\b/i.test(error.message);
-  return {
-    exitCode: timedOut ? 124 : 1,
-    stdout: collectAcpRuntimeOutput(collector.events),
-    stderr: formatAcpLifecycleError(error),
-    timedOut,
-  };
 }
 
 type StopAttemptResult =
