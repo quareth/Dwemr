@@ -106,7 +106,7 @@ Typical signals:
 - one primary user or very small audience
 - may be a script, bot, small web app, tiny dashboard, or single-purpose internal tool
 - limited feature surface, even if it has a UI or light persistence
-- user language like "simple", "quick", "basic", "small", or "just make it work"
+- user language like "simple", "quick", "basic", or "small"
 - the likely completed v1 would fit into one phased implementation run without deeper product slicing
 
 #### `standard_app`
@@ -178,10 +178,7 @@ You are a technical translator:
 
 Use natural product reading before asking extra scope questions.
 
-Example:
-
-- from `Make web app that sends configurable payloads to the specified target for testing purposes`, infer a likely simple MVP around configuring payloads, sending them to a target on demand, optionally running them later or on a schedule, and showing what came back from each request
-- only ask for clarification when the missing answer would materially change the project size, the first-version boundary, or the workflow/runtime setup
+Only ask for clarification when the missing answer would materially change the project size, the first-version boundary, or the workflow/runtime setup.
 
 When project size or scope is not already unmistakably clear, the bundled clarification batch must include one short free-form use-case question plus up to four short multiple-choice scope questions that collectively clarify:
 
