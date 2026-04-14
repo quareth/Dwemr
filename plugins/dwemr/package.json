@@ -1,6 +1,6 @@
 {
   "name": "dwemr",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "type": "module",
   "description": "DWEMR OpenClaw-to-Claude delivery bridge for project initialization and Claude agentic orchestration. A prompt-to-prototype workflow triggered through `/dwemr` commands.",
   "license": "MIT",
@@ -27,7 +27,9 @@
   "files": [
     "README.md",
     "CHANGELOG.md",
+    "docs/advanced-usage.md",
     "docs/PLAN_TEMPLATE.md",
+    "docs/troubleshooting.md",
     "index.ts",
     "install-packs.ts",
     "openclaw.plugin.json",
@@ -52,7 +54,9 @@
     "typescript": "^5.7.0"
   },
   "openclaw": {
-    "extensions": ["./index.ts"],
+    "extensions": [
+      "./index.ts"
+    ],
     "compat": {
       "pluginApi": ">=2026.4.2",
       "minGatewayVersion": "2026.4.2"

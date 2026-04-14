@@ -5,6 +5,29 @@ All notable changes to the `dwemr` plugin are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-04-14
+
+### Changed
+
+- Refocused the plugin README into a lighter front-door document centered on
+  DWEMR's purpose, install flow, quick start, and the most important
+  day-to-day commands.
+- Reframed the README purpose section around DWEMR's goal of producing
+  structured prototype applications and tools that stay easy to extend
+  later, instead of leaving users stuck in repeated refactor cycles.
+- Added a simple usage section to the plugin README covering
+  `/dwemr init`, `/dwemr start`, `/dwemr continue`, `/dwemr projects`,
+  and `/dwemr what-now`.
+
+### Added
+
+- New advanced reference document at `docs/advanced-usage.md` for detailed
+  command reference, runtime behavior, configuration notes, architecture,
+  and implementation surfaces.
+- New troubleshooting document at `docs/troubleshooting.md` for ACPX host
+  issues, `/dwemr doctor` and self-heal flows, timeout and permission
+  guidance, and verification steps.
+
 ## [0.2.0] - 2026-04-10
 
 This release lands the ACP-native runtime refactor and fully retires the
