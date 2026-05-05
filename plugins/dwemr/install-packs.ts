@@ -35,7 +35,8 @@ export type InstallPackDefinition = {
 };
 
 const pluginRoot = path.dirname(fileURLToPath(import.meta.url));
-const templateRoot = path.join(pluginRoot, "templates");
+const pluginAssetRoot = path.basename(pluginRoot) === "dist" ? path.dirname(pluginRoot) : pluginRoot;
+const templateRoot = path.join(pluginAssetRoot, "templates");
 export const ACTIVE_QUALITY_RUNBOOK_PATH = "docs/runbooks/active-quality-runbook.md";
 
 function templateAsset(relativePath: string): InstallEntry {
@@ -57,7 +58,7 @@ function templateAssetAs(sourceRelativePath: string, targetPath: string): Instal
 function pluginAsset(sourceRelativePath: string, targetPath: string): InstallEntry {
   return {
     type: "copy",
-    sourcePath: path.join(pluginRoot, sourceRelativePath),
+    sourcePath: path.join(pluginAssetRoot, sourceRelativePath),
     targetPath,
   };
 }

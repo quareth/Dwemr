@@ -27,6 +27,7 @@
   "files": [
     "README.md",
     "CHANGELOG.md",
+    "dist/",
     "docs/advanced-usage.md",
     "docs/PLAN_TEMPLATE.md",
     "docs/troubleshooting.md",
@@ -41,6 +42,7 @@
     "access": "public"
   },
   "scripts": {
+    "build": "node ./scripts/build.mjs",
     "test": "tsx --test ../dev/tests/**/*.test.ts",
     "typecheck": "tsc --noEmit"
   },
@@ -49,6 +51,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "esbuild": "^0.28.0",
     "openclaw": "^2026.4.2",
     "tsx": "^4.21.0",
     "typescript": "^5.7.0"
@@ -56,6 +59,9 @@
   "openclaw": {
     "extensions": [
       "./index.ts"
+    ],
+    "runtimeExtensions": [
+      "./dist/index.js"
     ],
     "compat": {
       "pluginApi": ">=2026.4.2",

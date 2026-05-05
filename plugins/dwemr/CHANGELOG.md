@@ -12,6 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Bumped the DWEMR plugin package and manifest metadata for a fresh ClawHub
   publish using the current ClawPack/npm-pack artifact path instead of the
   previously listed legacy ZIP artifact.
+- Added a compiled runtime entry at `dist/index.js` and declared it through
+  `openclaw.runtimeExtensions`, matching current ClawHub code-plugin publish
+  requirements.
 
 ## [0.2.1] - 2026-04-14
 
