@@ -1,6 +1,6 @@
 {
   "name": "dwemr",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "type": "module",
   "description": "DWEMR OpenClaw-to-Claude delivery bridge for project initialization and Claude agentic orchestration. A prompt-to-prototype workflow triggered through `/dwemr` commands.",
   "license": "MIT",

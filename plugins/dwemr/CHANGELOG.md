@@ -5,6 +5,14 @@ All notable changes to the `dwemr` plugin are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2] - 2026-05-05
+
+### Changed
+
+- Bumped the DWEMR plugin package and manifest metadata for a fresh ClawHub
+  publish using the current ClawPack/npm-pack artifact path instead of the
+  previously listed legacy ZIP artifact.
+
 ## [0.2.1] - 2026-04-14
 
 ### Changed
